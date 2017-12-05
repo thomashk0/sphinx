@@ -65,6 +65,7 @@ builtin_extensions = (
     'sphinx.builders.gettext',
     'sphinx.builders.html',
     'sphinx.builders.latex',
+    'sphinx.builders.pandoc',
     'sphinx.builders.linkcheck',
     'sphinx.builders.manpage',
     'sphinx.builders.singlehtml',

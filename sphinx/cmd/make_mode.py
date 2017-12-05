@@ -32,6 +32,7 @@ BUILDERS = [
     ("",      "singlehtml",  "to make a single large HTML file"),
     ("",      "pickle",      "to make pickle files"),
     ("",      "json",        "to make JSON files"),
+    ("",      "pandoc",      "to make Pandoc AST JSON files"),
     ("",      "htmlhelp",    "to make HTML files and an HTML help project"),
     ("",      "qthelp",      "to make HTML files and a qthelp project"),
     ("",      "devhelp",     "to make HTML files and a Devhelp project"),
