@@ -68,7 +68,7 @@ class ClassDirective(Directive):
     option_spec = {'opt': lambda x: x}
 
     def run(self):
-        return [nodes.strong(text='from class: %s' % self.options['opt'])]
+        return [nodes.paragraph('', '', nodes.strong(text='from class: %s' % self.options['opt']))]
 
 
 def setup(app):
