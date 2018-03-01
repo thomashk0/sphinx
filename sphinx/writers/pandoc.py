@@ -1,9 +1,8 @@
-import inspect
 import json
 import re
 import sys
 from collections import namedtuple
-from pprint import pprint
+from os import path
 
 from docutils import nodes
 from docutils.writers import Writer
@@ -102,23 +101,27 @@ def _pop_with(el):
     def func(self, node):
         contents = self.pop()
         self.body.append(el(contents))
+
     return func
 
 
 def _admonition_contents(name, title, contents):
     return Div(["", [name], []],
-                [Div(["", ["adminition-title"], []],
-                     [Para([Str(title)])] + contents)])
+               [Div(["", ["adminition-title"], []],
+                    [Para([Str(title)])] + contents)])
 
 
 def _admonition(name, title):
     def func(self, node):
         contents = self.pop()
         self.body.append(_admonition_contents(name, title, contents))
+
     return func
 
 
 class PandocTranslator(nodes.NodeVisitor):
+    ignore_missing_images = False
+
     def __init__(self, document, builder):
         nodes.NodeVisitor.__init__(self, document)
         self.builder = builder
@@ -146,6 +149,7 @@ class PandocTranslator(nodes.NodeVisitor):
             2 * [[builder.config.highlight_language, sys.maxsize]]
         self.next_hyperlink_ids = {}
         self.next_section_ids = set()
+        self.next_figure_ids = set()
 
     def _skip(self, node):
         raise nodes.SkipNode
@@ -174,15 +178,15 @@ class PandocTranslator(nodes.NodeVisitor):
     def dispatch_visit(self, node):
         if isinstance(node.parent, nodes.sidebar):
             raise nodes.SkipNode
-        print(" VISIT", node.tagname)
+        logger.debug(" VISIT %s", node.tagname)
         return super().dispatch_visit(node)
 
     def dispatch_departure(self, node):
-        print("DEPART", node.tagname)
+        logger.debug("DEPART %s", node.tagname)
         return super().dispatch_departure(node)
 
     def unknown_visit(self, node):
-        print("NOT IMPLEMENTED", node.tagname)
+        logger.warning("not implemented: '%s'", node.tagname)
         raise nodes.SkipNode
 
     def push_hyperlink_ids(self, figtype, ids):
@@ -202,6 +206,7 @@ class PandocTranslator(nodes.NodeVisitor):
 
     def get_text(self, text):
         tokens = []
+
         def matcher(m):
             if m.group('white'):
                 token = Space()
@@ -278,8 +283,6 @@ class PandocTranslator(nodes.NodeVisitor):
         self.push()
 
     def depart_title(self, node):
-        # TODO
-        id = ""
         if isinstance(node.parent, nodes.table):
             return
         if isinstance(node.parent, nodes.topic):
@@ -291,6 +294,12 @@ class PandocTranslator(nodes.NodeVisitor):
                 self.in_section = 0
                 return
             assert self.in_section > 0
+            id = ""
+            try:
+                id = list(self.next_section_ids)[0]
+            except IndexError:
+                pass
+            self.next_section_ids.clear()
             self.body.append(Header(self.in_section, [id, [], []], contents))
         else:
             # TODO
@@ -300,6 +309,7 @@ class PandocTranslator(nodes.NodeVisitor):
     depart_compound = _pass
 
     visit_paragraph = _push
+
     def depart_paragraph(self, node):
         cls = Para
         if self.in_list > 0:
@@ -314,24 +324,25 @@ class PandocTranslator(nodes.NodeVisitor):
             # self.in_parsed_literal += 1
             # return
 
+        classes = []
         opts = []
-        extra_opts = []
         code = node.astext()
         lang = self.hlsettingstack[-1][0]
         if 'language' in node:
             lang = node['language']
         if lang and lang != 'default':
-            opts.append(lang)
+            classes.append("sourceCode")
+            classes.append(lang)
         if node.get('linenos') is True:
-            opts.append("numberLines")
+            classes.append("numberLines")
             try:
                 start = node['highlight_args']['linenostart']
                 if start != 1:
-                    extra_opts.append(["startFrom", str(start)])
+                    opts.append(["startFrom", str(start)])
             except KeyError:
                 pass
 
-        self.body.append(CodeBlock(["", opts, extra_opts], code))
+        self.body.append(CodeBlock(["", classes, opts], code))
         raise nodes.SkipNode
 
     def depart_literal_block(self, node):
@@ -365,17 +376,23 @@ class PandocTranslator(nodes.NodeVisitor):
     depart_definition_list_item = _pop_flat
 
     def visit_term(self, node):
-        # TODO
-        # for id in node.get('ids'):
-        #     self.add_anchor(id, node)
-        # anchors and indexes need to go in front
         for n in node[:]:
             if isinstance(n, (addnodes.index, nodes.target)):
                 n.walkabout(self)
                 node.remove(n)
         self.push()
 
-    depart_term = _pop_flat
+    def depart_term(self, node):
+        contents = self.pop()
+        if node.get('ids'):
+            # glossary term, wrap with a Span with the right id
+            id = '{}:{}'.format(self.curfilestack[-1], node['ids'][0])
+            contents = [Span([id, [], []], contents)]
+        self.body.append(contents)
+
+    def visit_index(self, node):
+        # TODO?
+        raise nodes.SkipNode
 
     def visit_classifier(self, node):
         # TODO: what is this?
@@ -385,18 +402,16 @@ class PandocTranslator(nodes.NodeVisitor):
         pass
 
     visit_definition = _push
+
     def depart_definition(self, node):
         contents = self.pop()
-        self.body.append([contents])  # go figure
+        self.body.append([contents])  # singleton list mandatory
 
     visit_inline = _push
+
     def depart_inline(self, node):
-        # TODO
-        # attrs = node['classes']
-        # attrs = [["role", "ref"]]
-        attrs = []
         contents = self.pop()
-        self.body.append(Span(["", [], attrs], contents))
+        self.body.append(Span(["", node.get('classes', []), []], contents))
 
     visit_strong = _push
     depart_strong = _pop_with(Strong)
@@ -417,49 +432,28 @@ class PandocTranslator(nodes.NodeVisitor):
         raise nodes.SkipNode
 
     visit_reference = _push
+
     def depart_reference(self, node):
         contents = self.pop()
-
-        # TODO
-        # if not self.in_title:
-        #     for id in node.get('ids'):
-        #         anchor = not self.in_caption
-        #         self.body.append(self.hypertarget(id, anchor=anchor))
 
         uri = node.get('refuri', '')
         if not uri and node.get('refid'):
             uri = '%' + self.curfilestack[-1] + '#' + node['refid']
 
-        if False:
-            # if self.in_title or not uri:
-            self.context.append('')
-        elif uri.startswith('#'):
+        if uri.startswith('#'):
             # references to labels in the same document
-            id = self.curfilestack[-1] + ':' + uri[1:]
+            id = '#{}:{}'.format(self.curfilestack[-1], uri[1:])
             self.body.append(self.hyperlink(id, contents))
         elif uri.startswith('%'):
             # references to documents or labels inside documents
             hashindex = uri.find('#')
             if hashindex == -1:
-                # reference to the document
-                id = uri[1:] + '::doc'
+                # reference to the document itself (??)
+                id = uri[1:hashindex]
             else:
                 # reference to a label
-                id = uri[1:].replace('#', ':')
+                id = '#{}:{}'.format(uri[1:hashindex], uri[hashindex + 1:])
             self.body.append(self.hyperlink(id, contents))
-            # if len(node) and hasattr(node[0], 'attributes') and \
-            #         'std-term' in node[0].get('classes', []):
-            #     # don't add a pageref for glossary terms
-            #     self.context.append('}}}')
-            #     # mark up as termreference
-            #     self.body.append(r'\sphinxtermref{')
-            # else:
-            #     self.body.append(r'\sphinxcrossref{')
-            #     if self.builder.config.latex_show_pagerefs and not \
-            #             self.in_production_list:
-            #         self.context.append('}}} (%s)' % self.hyperpageref(id))
-            #     else:
-            #         self.context.append('}}}')
         else:
             if len(node) == 1 and uri == node[0]:
                 self.body.append(self.hyperlink(uri, contents))
@@ -475,48 +469,33 @@ class PandocTranslator(nodes.NodeVisitor):
             except IndexError:
                 # last node in parent, look at next after parent
                 # (for section of equal level)
-                next = node.parent.parent[node.parent.parent.index(node.parent)]
+                next = node.parent.parent[
+                    node.parent.parent.index(node.parent)]
+
+            doc = self.curfilestack[-1] + ':'
+            ids = set()
+            if node.get('refid'):
+                ids.add(doc + node['refid'])
+            ids.update(doc + id for id in node['ids'])
+
             if isinstance(next, nodes.section):
-                if node.get('refid'):
-                    self.next_section_ids.add(node['refid'])
-                self.next_section_ids.update(node['ids'])
+                self.next_section_ids.update(ids)
                 return
+
+            if isinstance(next, nodes.figure):
+                self.next_figure_ids.update(ids)
+                return
+
         except (IndexError, AttributeError):
             pass
-        if 'refuri' in node:
-            return
-        # TODO
-        if node.get('refid'):
-            pass
-            # self.add_anchor(node['refid'], node)
-        for id in node['ids']:
-            pass
-            # self.add_anchor(id, node)
+
+        # TODO: other cases?
 
     depart_target = _pass
 
-    def visit_container(self, node):
-        # TODO (useful?)
-        # if node.get('literal_block'):
-        pass
-
-    def depart_container(self, node):
-        # TODO
-        return
-        # if node.get('literal_block'):
-        #     contents = self.pop()
-        #     ids = ''
-        #     for id in self.pop_hyperlink_ids('code-block'):
-        #         ids += self.hypertarget(id, anchor=False)
-        #     if node['ids']:
-        #         # suppress with anchor=False \phantomsection insertion
-        #         ids += self.hypertarget(node['ids'][0], anchor=False)
-        #     # define label for use in caption.
-        #     if ids:
-        #         pass
-        #         # self.body.append(self.hyperlink())
-        #         # self.body.append(
-        #         #     '\n\\def\\sphinxLiteralBlockLabel{' + ids + '}\n')
+    # TODO (useful?)
+    visit_container = _pass
+    depart_container = _pass
 
     def visit_enumerated_list(self, node):
         self.in_list += 1
@@ -539,7 +518,8 @@ class PandocTranslator(nodes.NodeVisitor):
         start = 1
         if 'start' in node:
             start = node['start']
-        self.body.append(OrderedList([start, {"t": style}, {"t": delim}], contents))
+        self.body.append(
+            OrderedList([start, {"t": style}, {"t": delim}], contents))
 
     def visit_footnote_reference(self, node):
         num = node.astext().strip()
@@ -625,6 +605,9 @@ class PandocTranslator(nodes.NodeVisitor):
         if node['uri'] in self.builder.images:
             uri = self.builder.images[node['uri']]
         else:
+            # missing image!
+            if self.ignore_missing_images:
+                return
             uri = node['uri']
         if uri.find('://') != -1:
             # ignore remote images
@@ -637,23 +620,24 @@ class PandocTranslator(nodes.NodeVisitor):
         height = node.attributes.get('height', '')
         if height:
             attrs.append(["height", height])
-        # TODO: more attrs? find list of supported
+        if uri.endswith('.svg'):
+            uri = path.splitext(uri)[0] + '.png'
         self.body.append(Para([Image(["", [], attrs], [alt], [uri, ""])]))
         raise nodes.SkipNode
 
     def visit_acks(self, node):
         text = self.get_text(', '.join(
-                n.astext() for n in node.children[0].children) + '.')
-        print("ACKS", text)
+            n.astext() for n in node.children[0].children) + '.')
         self.body.append(Para(text))
         raise nodes.SkipNode
 
-    visit_note = visit_warn = visit_tip = _push
+    visit_note = visit_warning = visit_tip = _push
     depart_note = _admonition("note", "Note")
     depart_warning = _admonition("warning", "Warning")
     depart_tip = _admonition("tip", "Tip")
 
     visit_admonition = _push
+
     def depart_admonition(self, node):
         contents = self.pop()
         title = node.children[0].astext()
@@ -696,13 +680,27 @@ class PandocTranslator(nodes.NodeVisitor):
                 opts.append([attr, node[attr]])
         image["c"][1] = self.figure.get("caption", [])
         image["c"][2][1] = "fig:"
-        self.body.append(Div(["", ["figure"], []], [Para([image])] + self.figure.get("legend", [])))
+        id = ""
+        if self.next_figure_ids:
+            id = list(self.next_figure_ids)[0]
+            self.next_figure_ids.clear()
+        self.body.append(Div(
+            [id, ["figure"], []],
+            [Para([image])] + self.figure.get("legend", [])))
         self.figure.clear()
 
     visit_legend = _push
+
     def depart_legend(self, node):
         self.figure["legend"] = self.pop()
 
     visit_caption = _push
+
     def depart_caption(self, node):
         self.figure["caption"] = self.pop()
+
+    visit_glossary = _push
+
+    def depart_glossary(self, node):
+        contents = self.pop()
+        self.body.append(contents[0])

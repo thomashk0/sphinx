@@ -1,3 +1,4 @@
+import subprocess
 from docutils.frontend import OptionParser
 from docutils.io import FileOutput
 from os import path
@@ -5,7 +6,8 @@ from os import path
 from sphinx import addnodes
 from sphinx.builders import Builder
 from sphinx.environment import NoUri
-from sphinx.util import logging, ensuredir
+from sphinx.environment.adapters.asset import ImageAdapter
+from sphinx.util import logging, ensuredir, status_iterator, copy_asset_file
 from sphinx.util.nodes import inline_all_toctrees
 from sphinx.util.console import darkgreen
 from sphinx.util.osutil import SEP
@@ -19,8 +21,8 @@ logger = logging.getLogger(__name__)
 class PandocBuilder(Builder):
     name = 'pandoc'
     format = 'pandoc'
-    supported_image_types = ['application/json']
-    supported_remote_images = False
+    supported_image_types = ['image/png', 'image/jpeg']
+    supported_remote_images = True
     default_translator_class = PandocTranslator
 
     def init(self):
@@ -34,7 +36,6 @@ class PandocBuilder(Builder):
         if docname not in self.docnames:
             raise NoUri
         else:
-            # TODO
             return '%' + docname
 
     def get_relative_uri(self, from_, to, typ=None):
@@ -69,28 +70,68 @@ class PandocBuilder(Builder):
 
         for docname, title, author in self.document_data:
             logger.info("processing %s...", docname)
-
-            tree = self.env.get_doctree(docname)
-            docnames = set()  # type: Set[unicode]
-            largetree = inline_all_toctrees(self, docnames, docname, tree,
-                                            darkgreen, [docname])
-            self.env.resolve_references(largetree, docname, self)
-            # self.post_process_images(doctree)
-            # remove pending_xref nodes
-            for pendingnode in largetree.traverse(addnodes.pending_xref):
-                pendingnode.replace_self(pendingnode.children)
-
-            largetree.settings = docsettings
-            largetree.settings.authors = [author]
-            largetree.settings.title = title
-            largetree.settings.docname = docname
+            doctree = self.assemble_doctree(docname)
+            self.post_process_images(doctree)
+            doctree.settings = docsettings
+            doctree.settings.author = author
+            doctree.settings.title = title
+            doctree.settings.docname = docname
 
             logger.info("writing...")
             filename = path.join(self.outdir, docname + '.json')
             ensuredir(path.dirname(filename))
             destination = FileOutput(destination_path=filename, encoding='utf-8')
-            docwriter.write(largetree, destination)
+            docwriter.write(doctree, destination)
             logger.info("done")
+
+    def assemble_doctree(self, indexfile):
+        self.docnames = {indexfile}
+        logger.info(darkgreen(indexfile) + " ", nonl=1)
+        tree = self.env.get_doctree(indexfile)
+        tree['docname'] = indexfile
+        largetree = inline_all_toctrees(self, self.docnames, indexfile, tree,
+                                        darkgreen, [indexfile])
+        largetree['docname'] = indexfile
+        logger.info("")
+        logger.info("resolving references...")
+        self.env.resolve_references(largetree, indexfile, self)
+        # TODO: pending nodes?
+        for pendingnode in largetree.traverse(addnodes.pending_xref):
+            pendingnode.replace_self(pendingnode.children)
+
+        return largetree
+
+    def finish(self):
+        # type: () -> None
+        self.copy_image_files()
+
+    def copy_image_files(self):
+        # type: () -> None
+        if self.images:
+            stringify_func = ImageAdapter(self.app.env).get_original_image_uri
+            for src in status_iterator(self.images, 'copying images... ',
+                                       "brown",
+                                       len(self.images),
+                                       self.app.verbosity,
+                                       stringify_func=stringify_func):
+                dest = self.images[src]
+
+                # SVG to PNG
+                if src.endswith('.svg'):
+                    dest = path.splitext(dest)[0] + '.png'
+                    logger.info("converting %s to %s", src, dest)
+                    subprocess.check_call(
+                        ['inkscape', '-w', '2048',
+                         '-e', path.join(self.outdir, dest),
+                         path.join(self.srcdir, src)],
+                        stdout=subprocess.DEVNULL)
+                    continue
+                try:
+                    copy_asset_file(path.join(self.srcdir, src),
+                                    path.join(self.outdir, dest))
+                except Exception as err:
+                    logger.warning('cannot copy image file %r: %s',
+                                   path.join(self.srcdir, src), err)
 
 
 def setup(app):

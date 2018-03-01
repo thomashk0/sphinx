@@ -384,6 +384,18 @@ def man_visit_graphviz(self: ManualPageTranslator, node: graphviz) -> None:
     raise nodes.SkipNode
 
 
+def pandoc_visit_graphviz(self, node):
+    try:
+        fname, outfn = render_dot(self, node['code'], node['options'], 'png')
+    except GraphvizError as exc:
+        logger.warning('dot code %r: ' % node['code'] + str(exc))
+        raise nodes.SkipNode
+    if fname is not None:
+        from sphinx.writers.pandoc import Para, Image
+        self.body.append(Para([Image(["", [], []], [], [fname, ""])]))
+    raise nodes.SkipNode
+
+
 def on_build_finished(app: Sphinx, exc: Exception) -> None:
     if exc is None and app.builder.format == 'html':
         src = path.join(sphinx.package_dir, 'templates', 'graphviz', 'graphviz.css')
@@ -395,6 +407,7 @@ def setup(app: Sphinx) -> Dict[str, Any]:
     app.add_node(graphviz,
                  html=(html_visit_graphviz, None),
                  latex=(latex_visit_graphviz, None),
+                 pandoc=(pandoc_visit_graphviz, None),
                  texinfo=(texinfo_visit_graphviz, None),
                  text=(text_visit_graphviz, None),
                  man=(man_visit_graphviz, None))
