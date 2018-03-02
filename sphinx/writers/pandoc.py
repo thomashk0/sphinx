@@ -8,7 +8,6 @@ from docutils import nodes
 from docutils.writers import Writer
 
 from sphinx import addnodes
-from sphinx.errors import SphinxError
 from sphinx.util import logging
 
 logger = logging.getLogger(__name__)
@@ -116,6 +115,15 @@ def _admonition(name, title):
     return func
 
 
+def _div_wrap(*classes):
+    def func(self, node):
+        contents = self.pop()
+        # TODO: id
+        self.body.append(Div(["", classes, []], contents))
+
+    return func
+
+
 class PandocTranslator(nodes.NodeVisitor):
     ignore_missing_images = False
 
@@ -137,7 +145,8 @@ class PandocTranslator(nodes.NodeVisitor):
         self.body_stack = []
         self.body = []
         self.title = None
-        self.figure = {}
+        self.caption = None
+        self.legend = None
 
         self.curfilestack = []
         self.footnotestack = []
@@ -146,6 +155,7 @@ class PandocTranslator(nodes.NodeVisitor):
             2 * [[builder.config.highlight_language, sys.maxsize]]
         self.next_section_ids = set()
         self.next_figure_ids = set()
+        self.handled_abbrs = set()
 
     def _skip(self, node):
         raise nodes.SkipNode
@@ -249,6 +259,9 @@ class PandocTranslator(nodes.NodeVisitor):
 
     visit_comment = _skip
 
+    # already handled
+    visit_substitution_definition = _skip
+
     def visit_Text(self, node):
         self.body.extend(self.get_text(node.astext()))
         # glue space and footnote reference
@@ -295,8 +308,7 @@ class PandocTranslator(nodes.NodeVisitor):
             # TODO
             pass
 
-    visit_compound = _pass
-    depart_compound = _pass
+    visit_compound = depart_compound = _pass
 
     visit_paragraph = _push
 
@@ -309,16 +321,14 @@ class PandocTranslator(nodes.NodeVisitor):
 
     def visit_literal_block(self, node):
         if node.rawsource != node.astext():
-            raise nodes.SkipNode
             # most probably a parsed-literal block -- don't highlight
-            # self.in_parsed_literal += 1
-            # return
+            raise nodes.SkipNode
 
         classes = []
         opts = []
         code = node.astext()
         lang = self.hlsettingstack[-1][0]
-        if 'language' in node:
+        if node.hasattr('language'):
             lang = node['language']
         if lang and lang != 'default':
             classes.append("sourceCode")
@@ -380,16 +390,21 @@ class PandocTranslator(nodes.NodeVisitor):
             contents = [Span([id, [], []], contents)]
         self.body.append(contents)
 
-    def visit_index(self, node):
-        # TODO?
-        raise nodes.SkipNode
+    # TODO?
+    visit_index = _skip
 
-    def visit_classifier(self, node):
-        # TODO: what is this?
-        pass
+    # TODO: what is this?
+    visit_classifier = depart_classifier = _pass
 
-    def depart_classifier(self, node):
-        pass
+    visit_container = _push
+
+    def depart_container(self, node):
+        contents = self.pop()
+        if self.caption:
+            contents.insert(0, Para([Span(["", ["caption"], []], self.caption)]))
+        print(contents)
+        self.body.append(Div(["", ["container"], []], contents))
+        self.caption = None
 
     visit_definition = _push
 
@@ -404,6 +419,7 @@ class PandocTranslator(nodes.NodeVisitor):
         self.body.append(Span(["", node.get('classes', []), []], contents))
 
     visit_strong = _push
+
     depart_strong = _pop_with(Strong)
 
     def visit_literal_strong(self, node):
@@ -411,6 +427,7 @@ class PandocTranslator(nodes.NodeVisitor):
         raise nodes.SkipNode
 
     visit_emphasis = _push
+
     depart_emphasis = _pop_with(Emph)
 
     def visit_literal_emphasis(self, node):
@@ -482,10 +499,6 @@ class PandocTranslator(nodes.NodeVisitor):
 
     depart_target = _pass
 
-    # TODO (useful?)
-    visit_container = _pass
-    depart_container = _pass
-
     def visit_enumerated_list(self, node):
         self.in_list += 1
         self.push()
@@ -505,7 +518,7 @@ class PandocTranslator(nodes.NodeVisitor):
             ".": "Period",
         }.get(node.get('suffix'), "DefaultDelim")
         start = 1
-        if 'start' in node:
+        if node.hasattr('start'):
             start = node['start']
         self.body.append(
             OrderedList([start, {"t": style}, {"t": delim}], contents))
@@ -562,6 +575,7 @@ class PandocTranslator(nodes.NodeVisitor):
             self.body.append(LineBlock(list(unfold(contents, -1))))
 
     visit_line = _push
+
     depart_line = _pop_with(LineBlockLine)
 
     def visit_transition(self, node):
@@ -569,9 +583,11 @@ class PandocTranslator(nodes.NodeVisitor):
         raise nodes.SkipNode
 
     visit_superscript = _push
+
     depart_superscript = _pop_with(Superscript)
 
     visit_subscript = _push
+
     depart_subscript = _pop_with(Subscript)
 
     def visit_math_block(self, node):
@@ -604,6 +620,7 @@ class PandocTranslator(nodes.NodeVisitor):
         raise nodes.SkipNode
 
     visit_block_quote = _push
+
     depart_block_quote = _pop_with(BlockQuote)
 
     def visit_image(self, node):
@@ -637,9 +654,13 @@ class PandocTranslator(nodes.NodeVisitor):
         raise nodes.SkipNode
 
     visit_note = visit_important = visit_warning = visit_tip = _push
+
     depart_note = _admonition("note", "Note")
+
     depart_important = _admonition("important", "Important")
+
     depart_warning = _admonition("warning", "Warning")
+
     depart_tip = _admonition("tip", "Tip")
 
     visit_admonition = _push
@@ -672,19 +693,17 @@ class PandocTranslator(nodes.NodeVisitor):
     # def visit_tabular_col_spec(self, node):
     #     raise nodes.SkipNode
 
-    def visit_figure(self, node):
-        self.figure = {}
-        self.push()
+    visit_figure = _push
 
     def depart_figure(self, node):
         image = self.pop()[0]["c"][0]
         _, classes, opts = image["c"][0]
-        if 'align' in node:
+        if node.hasattr('align'):
             classes.append("align-" + node['align'])
         for attr in ('width', 'height'):
-            if attr in node:
+            if node.hasattr(attr):
                 opts.append([attr, node[attr]])
-        image["c"][1] = self.figure.get("caption", [])
+        image["c"][1] = self.caption or []
         image["c"][2][1] = "fig:"
         id = ""
         if self.next_figure_ids:
@@ -692,18 +711,19 @@ class PandocTranslator(nodes.NodeVisitor):
             self.next_figure_ids.clear()
         self.body.append(Div(
             [id, ["figure"], []],
-            [Para([image])] + self.figure.get("legend", [])))
-        self.figure.clear()
+            [Para([image])] + (self.legend or [])))
+        self.caption = None
+        self.legend = None
 
     visit_legend = _push
 
     def depart_legend(self, node):
-        self.figure["legend"] = self.pop()
+        self.legend = self.pop()
 
     visit_caption = _push
 
     def depart_caption(self, node):
-        self.figure["caption"] = self.pop()
+        self.caption = self.pop()
 
     visit_glossary = _push
 
@@ -713,7 +733,39 @@ class PandocTranslator(nodes.NodeVisitor):
 
     visit_topic = _push
 
-    def depart_topic(self, node):
+    depart_topic = _div_wrap("topic")
+
+    visit_centered = _push
+
+    depart_centered = _div_wrap("centered")
+
+    visit_number_reference = _push
+
+    def depart_number_reference(self, node):
         contents = self.pop()
-        # TODO: id
-        self.body.append(Div(["", ["topic"], []], contents))
+        if node.get('refid'):
+            id = self.hypertarget(node['refid'])
+        else:
+            id = node.get('refuri', '')[1:].replace('#', ':')
+        self.body.append(self.hyperlink(id, contents))
+
+    visit_download_reference = _push
+
+    def depart_download_reference(self, node):
+        contents = self.pop()
+        if node.hasattr('reftarget'):
+            uri = 'file://' + node['reftarget']
+            contents = self.hyperlink(uri, contents)
+        self.body.append(contents)
+
+    visit_abbreviation = _push
+
+    def depart_abbreviation(self, node):
+        contents = self.pop()
+        abbr = node.astext()
+        # spell out the explanation once
+        if node.hasattr('explanation') and abbr not in self.handled_abbrs:
+            self.handled_abbrs.add(abbr)
+            # append explanation
+            contents.extend(self.get_text(' ({})'.format(node['explanation'])))
+        self.body.append(Span(["", ["abbr"], []], contents))
