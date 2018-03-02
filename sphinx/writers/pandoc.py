@@ -52,7 +52,8 @@ Table = elt('Table', 5)  # TODO
 
 # Inline elements
 # Strikeout = elt('Strikeout', 1)  # unsupported
-Cite = elt('Cite', 2)  # TODO
+Cite = elt('Cite', 2)
+NormalCitation = elt('NormalCitation', 0)
 Code = elt('Code', 2)
 DisplayMath = elt('DisplayMath', 0)
 Emph = elt('Emph', 1)
@@ -107,7 +108,7 @@ def _pop_with(el):
 
 def _admonition_contents(name, title, contents):
     return Div(["", [name], []],
-               [Div(["", ["adminition-title"], []],
+               [Div(["", ["admonition-title"], []],
                     [Para([Str(title)])] + contents)])
 
 
@@ -594,6 +595,22 @@ class PandocTranslator(nodes.NodeVisitor):
         self.body.append(Math(InlineMath(), node.astext()))
         raise nodes.SkipNode
 
+    def visit_citation(self, node):
+        try:
+            key = node['ids'][0]
+        except IndexError:
+            raise NotImplementedError(
+                "citation with more than one key")
+
+        self.body.append(Cite([{
+            "citationNoteNum": 0,
+            "citationMode": NormalCitation(),
+            "citationPrefix": [],
+            "citationSuffix": [],
+            "citationId": key,
+            "citationHash": 0}], [Str(node[0].astext())]))
+        raise nodes.SkipNode
+
     def visit_literal(self, node):
         self.body.append(Code(["", [], []], node.astext()))
         raise nodes.SkipNode
@@ -631,8 +648,9 @@ class PandocTranslator(nodes.NodeVisitor):
         self.body.append(Para(text))
         raise nodes.SkipNode
 
-    visit_note = visit_warning = visit_tip = _push
+    visit_note = visit_important = visit_warning = visit_tip = _push
     depart_note = _admonition("note", "Note")
+    depart_important = _admonition("important", "Important")
     depart_warning = _admonition("warning", "Warning")
     depart_tip = _admonition("tip", "Tip")
 
