@@ -77,10 +77,6 @@ Superscript = elt('Superscript', 1)
 LineBlockLine = namedtuple('LineBlockLine', 'contents')
 
 
-class UnsupportedError(SphinxError):
-    category = 'Markup is unsupported in Pandoc AST'
-
-
 class PandocWriter(Writer):
     def __init__(self, builder):
         Writer.__init__(self)
@@ -148,7 +144,6 @@ class PandocTranslator(nodes.NodeVisitor):
         self.pending_footnotes = []
         self.hlsettingstack = \
             2 * [[builder.config.highlight_language, sys.maxsize]]
-        self.next_hyperlink_ids = {}
         self.next_section_ids = set()
         self.next_figure_ids = set()
 
@@ -189,13 +184,6 @@ class PandocTranslator(nodes.NodeVisitor):
     def unknown_visit(self, node):
         logger.warning("not implemented: '%s'", node.tagname)
         raise nodes.SkipNode
-
-    def push_hyperlink_ids(self, figtype, ids):
-        hyperlink_ids = self.next_hyperlink_ids.setdefault(figtype, set())
-        hyperlink_ids.update(ids)
-
-    def pop_hyperlink_ids(self, figtype):
-        return self.next_hyperlink_ids.pop(figtype, set())
 
     def hypertarget(self, id, withdoc=True, anchor=True):
         if withdoc:
