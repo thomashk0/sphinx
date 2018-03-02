@@ -272,12 +272,13 @@ class PandocTranslator(nodes.NodeVisitor):
         self.push()
 
     def depart_title(self, node):
+        contents = self.pop()
         if isinstance(node.parent, nodes.table):
             return
         if isinstance(node.parent, nodes.topic):
-            raise nodes.SkipNode
+            self.body.append(Para([Span(["", ["topic-title"], []], contents)]))
+            return
         if isinstance(node.parent, nodes.section):
-            contents = self.pop()
             if self.title is None:
                 self.title = MetaInlines(contents)
                 self.in_section = 0
@@ -709,3 +710,10 @@ class PandocTranslator(nodes.NodeVisitor):
     def depart_glossary(self, node):
         contents = self.pop()
         self.body.append(contents[0])
+
+    visit_topic = _push
+
+    def depart_topic(self, node):
+        contents = self.pop()
+        # TODO: id
+        self.body.append(Div(["", ["topic"], []], contents))
