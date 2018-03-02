@@ -101,16 +101,25 @@ def _pop_with(el):
     return func
 
 
-def _admonition_contents(name, title, contents):
+def _div(div_classes, contents, style=None):
+    """Create a div with an optional 'custom-style' attribute
+    """
+    attrs = [["custom-style", style]] if style else []
+    return Div(["", div_classes, attrs], contents)
+
+
+def _admonition_contents(name, title, contents, style=None):
+    title_style = style + "Title" if style else None
     return Div(["", [name], []],
-               [Div(["", ["admonition-title"], []],
-                    [Para([Str(title)])] + contents)])
+               [_div(["admonition-title"], [Para([Str(title)])], style=title_style),
+                _div(["adminition-title"], contents, style=style)])
 
 
-def _admonition(name, title):
+def _admonition(name, title, style=None):
     def func(self, node):
         contents = self.pop()
-        self.body.append(_admonition_contents(name, title, contents))
+        self.body.append(
+            _admonition_contents(name, title, contents, style=style))
 
     return func
 
@@ -653,15 +662,21 @@ class PandocTranslator(nodes.NodeVisitor):
         self.body.append(Para(text))
         raise nodes.SkipNode
 
-    visit_note = visit_important = visit_warning = visit_tip = _push
+    visit_note = _push
+    visit_important = _push
+    visit_warning = _push
+    visit_tip = _push
+    visit_seealso = _push
+    # NOTE: for some reasons, one style is created for each todo...
+    # support is left as an improvement
+    # visit_todo_node = _push
 
-    depart_note = _admonition("note", "Note")
-
-    depart_important = _admonition("important", "Important")
-
-    depart_warning = _admonition("warning", "Warning")
-
-    depart_tip = _admonition("tip", "Tip")
+    depart_note = _admonition("note", "Note", style="Note")
+    depart_important = _admonition("important", "Important", style="Warning")
+    depart_warning = _admonition("warning", "Warning", style="Warning")
+    depart_tip = _admonition("tip", "Tip", style="Tiplo")
+    depart_seealso = _admonition("seealso", "See Also", style="Tip")
+    # depart_todo_node = _admonition("todo", "Todo", style="Warning")
 
     visit_admonition = _push
 
