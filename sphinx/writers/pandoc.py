@@ -624,11 +624,11 @@ class PandocTranslator(nodes.NodeVisitor):
         else:
             # missing image!
             if self.ignore_missing_images:
-                return
+                raise nodes.SkipNode
             uri = node['uri']
         if uri.find('://') != -1:
             # ignore remote images
-            return
+            raise nodes.SkipNode
         attrs = []
         alt = Str(node.attributes.get('alt', ''))
         width = node.attributes.get('width', '')
