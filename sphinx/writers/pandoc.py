@@ -185,7 +185,7 @@ class PandocTranslator(nodes.NodeVisitor):
         logger.warning("not implemented: '%s'", node.tagname)
         raise nodes.SkipNode
 
-    def hypertarget(self, id, withdoc=True, anchor=True):
+    def hypertarget(self, id, withdoc=True):
         if withdoc:
             id = self.curfilestack[-1] + ':' + id
         return id
@@ -375,7 +375,7 @@ class PandocTranslator(nodes.NodeVisitor):
         contents = self.pop()
         if node.get('ids'):
             # glossary term, wrap with a Span with the right id
-            id = '{}:{}'.format(self.curfilestack[-1], node['ids'][0])
+            id = self.hypertarget(node['ids'][0])
             contents = [Span([id, [], []], contents)]
         self.body.append(contents)
 
@@ -431,7 +431,7 @@ class PandocTranslator(nodes.NodeVisitor):
 
         if uri.startswith('#'):
             # references to labels in the same document
-            id = '#{}:{}'.format(self.curfilestack[-1], uri[1:])
+            id = '#' + self.hypertarget(uri[1:])
             self.body.append(self.hyperlink(id, contents))
         elif uri.startswith('%'):
             # references to documents or labels inside documents
@@ -461,11 +461,10 @@ class PandocTranslator(nodes.NodeVisitor):
                 next = node.parent.parent[
                     node.parent.parent.index(node.parent)]
 
-            doc = self.curfilestack[-1] + ':'
             ids = set()
             if node.get('refid'):
-                ids.add(doc + node['refid'])
-            ids.update(doc + id for id in node['ids'])
+                ids.add(self.hypertarget(node['refid']))
+            ids.update(self.hypertarget(id) for id in node['ids'])
 
             if isinstance(next, nodes.section):
                 self.next_section_ids.update(ids)
