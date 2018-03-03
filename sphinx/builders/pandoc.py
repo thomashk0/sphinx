@@ -28,6 +28,7 @@ class PandocBuilder(Builder):
     def init(self):
         self.docnames = []
         self.document_data = []
+        self.fignumbers = {}
 
     def get_outdated_docs(self):
         return 'all documents'  # for now
@@ -70,6 +71,7 @@ class PandocBuilder(Builder):
 
         for docname, title, author in self.document_data:
             logger.info("processing %s...", docname)
+            self.fignumbers = self.env.toc_fignumbers.get(docname, {})
             doctree = self.assemble_doctree(docname)
             self.post_process_images(doctree)
             doctree.settings = docsettings

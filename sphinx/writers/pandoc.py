@@ -710,6 +710,41 @@ class PandocTranslator(nodes.NodeVisitor):
 
     visit_figure = _push
 
+    def _get_figure_number(self, node):
+        """ Extract caption numbering
+
+        :return:
+            None if no numbering was found.
+            When a configuration option is missing it also reports a warning.
+            In case of success, returns the string prefix (e.g., "Fig 42. ")
+        """
+        fig_type = self.builder.env.domains['std'].get_figtype(node)
+        if not fig_type:
+            logger.warning("figure type {} is unknown".format(fig_type),
+                           location=node)
+            return None
+
+        if len(node['ids']) == 0:
+            logger.warning("No ids assigned for {}".format(node.tagname),
+                           location=node)
+            return None
+
+        fig_id = node['ids'][0]
+        fig_numbers = self.builder.fignumbers.get(fig_type, {}).get(fig_id)
+        if not fig_numbers:
+            # Normal execution path when compiling with numfig = False (default)
+            return None
+
+        prefix = self.builder.config.numfig_format.get(fig_type)
+        if not prefix:
+            logger.warning(
+                "numfig_format has to entry for type {}".format(fig_type))
+            return None
+
+        # NOTE: an extra space is appended by default.
+        #       However, it could be part of the user defined prefix
+        return prefix % '.'.join(map(str, fig_numbers)) + " "
+
     def depart_figure(self, node):
         image = self.pop()[0]["c"][0]
         _, classes, opts = image["c"][0]
@@ -738,7 +773,9 @@ class PandocTranslator(nodes.NodeVisitor):
     visit_caption = _push
 
     def depart_caption(self, node):
-        self.caption = self.pop()
+        fig_number = self._get_figure_number(node.parent)
+        prefix = [Str(fig_number)] if fig_number else []
+        self.caption = prefix + self.pop()
 
     visit_glossary = _push
 
@@ -758,11 +795,12 @@ class PandocTranslator(nodes.NodeVisitor):
 
     def depart_number_reference(self, node):
         contents = self.pop()
+        # FIXME (TH): why not reusing refrence handling from depart_reference ?
         if node.get('refid'):
             id = self.hypertarget(node['refid'])
         else:
             id = node.get('refuri', '')[1:].replace('#', ':')
-        self.body.append(self.hyperlink(id, contents))
+        self.body.append(self.hyperlink("#" + id, contents))
 
     visit_download_reference = _push
 
