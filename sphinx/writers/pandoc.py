@@ -742,9 +742,10 @@ class PandocTranslator(nodes.NodeVisitor):
             logger.warning("No ids assigned for {}".format(node.tagname),
                            location=node)
             return None
-
         fig_id = node['ids'][0]
-        fig_numbers = self.builder.fignumbers.get(fig_type, {}).get(fig_id)
+
+        key = "{}/{}".format(self.curfilestack[-1], fig_type)
+        fig_numbers = self.builder.fignumbers.get(key, {}).get(fig_id)
         if not fig_numbers:
             # Normal execution path when compiling with numfig = False (default)
             return None

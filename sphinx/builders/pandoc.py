@@ -68,10 +68,10 @@ class PandocBuilder(Builder):
             read_config_files=True).get_default_values()
 
         self.init_document_data()
+        self.fignumbers = self.assemble_toc_fignumbers()
 
         for docname, title, author in self.document_data:
             logger.info("processing %s...", docname)
-            self.fignumbers = self.env.toc_fignumbers.get(docname, {})
             doctree = self.assemble_doctree(docname)
             self.post_process_images(doctree)
             doctree.settings = docsettings
@@ -85,6 +85,20 @@ class PandocBuilder(Builder):
             destination = FileOutput(destination_path=filename, encoding='utf-8')
             docwriter.write(doctree, destination)
             logger.info("done")
+
+    def assemble_toc_fignumbers(self):
+        """ Merge all fignumbers to single fignumber
+        """
+        new_fignumbers = {}  # type: Dict[unicode, Dict[unicode, Tuple[int, ...]]]
+        # {u'foo': {'figure': {'id2': (2,), 'id1': (1,)}}, u'bar': {'figure': {'id1': (3,)}}}
+        for docname, fignumlist in self.env.toc_fignumbers.items():
+            for figtype, fignums in fignumlist.items():
+                alias = "%s/%s" % (docname, figtype)
+                new_fignumbers.setdefault(alias, {})
+                for id, fignum in fignums.items():
+                    new_fignumbers[alias][id] = fignum
+
+        return new_fignumbers
 
     def assemble_doctree(self, indexfile):
         self.docnames = {indexfile}
