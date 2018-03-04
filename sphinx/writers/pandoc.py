@@ -31,6 +31,15 @@ def elt(eltType, numargs):
 
     return fun
 
+# Below are defined a set of contructors for most important pandoc AST types.
+# They must match the pandoc API reference (see
+# http://hackage.haskell.org/package/pandoc-types-1.17.3.1/docs/Text-Pandoc-Definition.html)
+
+# Enums
+AlignLeft = elt('AlignLeft', 0)
+AlignRight = elt('AlignRight', 0)
+AlignCenter = elt('AlignCenter', 0)
+AlignDefault = elt('AlignDefault', 0)
 
 # Block elements
 BlockQuote = elt('BlockQuote', 1)
@@ -74,6 +83,75 @@ Subscript = elt('Subscript', 1)
 Superscript = elt('Superscript', 1)
 
 LineBlockLine = namedtuple('LineBlockLine', 'contents')
+
+
+class TableBuilder:
+    """A builder for pandoc tables
+
+    .. important::
+
+        Unfortunately, pandoc tables are not expressive enough to support
+        all ReST tables (see https://github.com/jgm/pandoc/issues/1024).
+        In cases where input table cannot be converted, we try a "best looking"
+        conversion (yeah, that's quite subjective) and report a warning.
+    """
+    def __init__(self, node):
+        # type: (nodes.table) -> None
+        self.headers = []                        # type: List[unicode]
+        self.rows = []
+        self.node = node
+        self.colcount = 0
+        self.colwidths = []                     # type: List[int]
+
+        self.in_header = False
+        self.currow = []
+        self.row = 0
+        self.col = 0
+
+    def start_thead(self):
+        self.in_header = True
+
+    def leave_thead(self):
+        assert self.in_header == True
+        self.in_header = False
+        self.headers = self.rows
+        self.rows = []
+        self.row = 0
+
+    def add_colspec(self, width):
+        self.colwidths.append(width)
+        self.colcount += 1
+
+    def add_header(self, content):
+        self.header.append(content)
+
+    def next_row(self):
+        self.row += 1
+        self.rows.append(self.currow)
+        self.currow = []
+        self.col = 0
+
+    def add_cell(self, content, morecols):
+        if morecols > 0:
+            logger.warning(
+                "pandoc doesn't support multicolumn cell, filling with empty "
+                "cell instead.",
+                location=self.node)
+        self.currow.extend([content] + [[] for _ in range(morecols)])
+        self.col += 1 + morecols
+
+    def as_pandoc_ast(self):
+        if len(self.headers) > 1:
+            logger.warning("pandoc doesn't support more than one row in a table"
+                           " header", location=self.node)
+        headers = self.headers[0] if len(self.headers) > 0 else []
+        caption = []
+        column_align = [AlignDefault() for _ in range(self.colcount)]
+        total_width = sum(self.colwidths)
+        relative_widths = [float(x) / total_width for x in self.colwidths]
+        return Table(caption, column_align, relative_widths,
+                     headers,
+                     self.rows)
 
 
 class PandocWriter(Writer):
@@ -156,6 +234,7 @@ class PandocTranslator(nodes.NodeVisitor):
         self.title = None
         self.caption = None
         self.legend = None
+        self.table = None
 
         self.curfilestack = []
         self.footnotestack = []
@@ -631,8 +710,9 @@ class PandocTranslator(nodes.NodeVisitor):
             logger.warning("Failed to create reference target: no ids found",
                            location=node)
             return
-        # contents[0] -> Str (label)
-        # contents[1] -> Para (label description)
+        # Expected contents shape:
+        #   contents[0] -> Str (label)
+        #   contents[1] -> Para (label description)
         cite_para = [Span([anchor, ["citation-label"], []], [contents[0]]),
                      Space()] + contents[1]['c']
         self.body.append(Div(["citation", [], []], [Para(cite_para)]))
@@ -725,27 +805,49 @@ class PandocTranslator(nodes.NodeVisitor):
         name = node['classes'][0]
         self.body.append(_admonition_contents(name, title, contents))
 
-    # def visit_table(self, node):
-    #     # raise nodes.SkipNode
-    #     pass
-    #
-    # def depart_table(self, node):
-    #     pass
-    #
-    # def visit_tgroup(self, node):
-    #     pass
-    #
-    # def depart_tgroup(self, node):
-    #     pass
-    #
-    # def visit_thead(self, node):
-    #     self.push()
-    #
-    # def depart_thead(self, node):
-    #     contents = self.pop()
-    #
-    # def visit_tabular_col_spec(self, node):
-    #     raise nodes.SkipNode
+    def visit_table(self, node):
+        self.table = TableBuilder(node)
+
+    def depart_table(self, node):
+        def plain_str(x):
+            return Plain([Str(x)])
+        self.body.append(self.table.as_pandoc_ast())
+        # self.body.append(
+        #     Table(
+        #         [],
+        #         [AlignCenter(), AlignLeft()],
+        #         [0.15, 0.16],
+        #         [[plain_str("header0")], [plain_str("header1")]],
+        #         [[[plain_str("col0")], [plain_str("col0")]],
+        #          [[plain_str("col merged")], []]]
+        #         ))
+        self.table = None
+
+    visit_tgroup = _pass
+    depart_tgroup = _pass
+
+    def visit_colspec(self, node):
+        self.table.add_colspec(node['colwidth'])
+        raise nodes.SkipNode
+
+    def visit_thead(self, node):
+        self.table.start_thead()
+
+    def depart_thead(self, node):
+        self.table.leave_thead()
+
+    visit_tbody = _pass
+    depart_tbody = _pass
+    visit_row = _pass
+
+    def depart_row(self, node):
+        self.table.next_row()
+
+    visit_entry = _push
+
+    def depart_entry(self, node):
+        contents = self.pop()
+        self.table.add_cell(contents, node.get('morecols', 0))
 
     visit_figure = _push
 
