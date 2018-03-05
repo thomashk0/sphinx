@@ -421,7 +421,6 @@ class PandocTranslator(nodes.NodeVisitor):
         contents = self.pop()
         if self.caption:
             contents.insert(0, Para([Span(["", ["caption"], []], self.caption)]))
-        print(contents)
         self.body.append(Div(["", ["container"], []], contents))
         self.caption = None
 
