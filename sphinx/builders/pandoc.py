@@ -155,6 +155,9 @@ def setup(app):
     app.add_config_value('pandoc_documents',
                          lambda self: [(self.master_doc, self.project, 'AUTHOR')],
                          None)
+    app.add_config_value('pandoc_force_absolute_size', False, 'pandoc')
+    app.add_config_value('pandoc_options', {}, 'pandoc')
+
     return {
         'version': 'builtin',
         'parallel_read_safe': True,

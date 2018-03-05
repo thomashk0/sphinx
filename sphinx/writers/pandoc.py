@@ -646,6 +646,33 @@ class PandocTranslator(nodes.NodeVisitor):
 
     depart_block_quote = _pop_with(BlockQuote)
 
+    def _convert_size(self, measure):
+        """Convert a relative distance (e.g., 12%) to an absolute one
+
+        Not all pandoc backends provide support for relative size (e.g., the
+        docx backend does not). By default, no conversion is applied, the user
+        needs to set the option pandoc_force_absolute_size = True to enable
+        conversion. In such case, the maximum size (i.e., the 100% value) must
+        also be provided ('textwidth' attribute in pandoc_options config
+        values).
+        """
+        if not self.builder.config.pandoc_force_absolute_size:
+            return measure
+
+        if not measure.endswith('%'):
+            return measure
+
+        textwidth = self.builder.config.pandoc_options.get('textwidth', None)
+        if not textwidth:
+            logger.warning(
+                "using options 'pandoc_force_absolute_size' requires textwidth"
+                "to be set in pandoc_options. For instance, define\n"
+                "pandoc_options = {'textwidth': (16, 'cm')} in your conf.py")
+            return measure
+        width, unit = textwidth
+        f = float(measure[:-1])
+        return str(f * width / 100) + unit
+
     def visit_image(self, node):
         if node['uri'] in self.builder.images:
             uri = self.builder.images[node['uri']]
@@ -658,13 +685,12 @@ class PandocTranslator(nodes.NodeVisitor):
             # ignore remote images
             raise nodes.SkipNode
         attrs = []
+
         alt = Str(node.attributes.get('alt', ''))
-        width = node.attributes.get('width', '')
-        if width:
-            attrs.append(["width", width])
-        height = node.attributes.get('height', '')
-        if height:
-            attrs.append(["height", height])
+        for attr in ('width', 'height'):
+            if node.hasattr(attr):
+                attrs.append([attr, self._convert_size(node[attr])])
+
         if uri.endswith('.svg'):
             uri = path.splitext(uri)[0] + '.png'
         self.body.append(Para([Image(["", [], attrs], [alt], [uri, ""])]))
@@ -767,7 +793,7 @@ class PandocTranslator(nodes.NodeVisitor):
             classes.append("align-" + node['align'])
         for attr in ('width', 'height'):
             if node.hasattr(attr):
-                opts.append([attr, node[attr]])
+                opts.append([attr, self._convert_size(node[attr])])
         image["c"][1] = self.caption or []
         image["c"][2][1] = "fig:"
         id = ""
