@@ -124,6 +124,7 @@ class TableBuilder:
         self.node = node
         self.colcount = 0
         self.colwidths = []                     # type: List[int]
+        self.caption = None
 
         self.in_header = False
         self.currow = []
@@ -167,7 +168,7 @@ class TableBuilder:
             logger.warning("pandoc doesn't support more than one row in a table"
                            " header", location=self.node)
         headers = self.headers[0] if len(self.headers) > 0 else []
-        caption = []
+        caption = self.caption or []
         column_align = [AlignDefault() for _ in range(self.colcount)]
         total_width = sum(self.colwidths)
         relative_widths = [float(x) / total_width for x in self.colwidths]
@@ -266,6 +267,7 @@ class PandocTranslator(nodes.NodeVisitor):
             2 * [[builder.config.highlight_language, sys.maxsize]]
         self.next_section_ids = set()
         self.next_figure_ids = set()
+        self.next_table_ids = set()
         self.handled_abbrs = set()
 
     def _skip(self, node):
@@ -398,10 +400,20 @@ class PandocTranslator(nodes.NodeVisitor):
     def depart_title(self, node):
         contents = self.pop()
         if isinstance(node.parent, nodes.table):
+            id = ""
+            try:
+                id = list(self.next_table_ids)[0]
+            except IndexError:
+                pass
+            self.next_table_ids.clear()
+            prefix = self._get_numref_prefix(node.parent)
+            self.table.caption = [Span([id, [], []], prefix + contents)]
             return
+
         if isinstance(node.parent, nodes.topic):
             self.body.append(Para([Span(["", ["topic-title"], []], contents)]))
             return
+
         if isinstance(node.parent, nodes.section):
             if self.title is None:
                 self.title = MetaInlines(contents)
@@ -618,6 +630,10 @@ class PandocTranslator(nodes.NodeVisitor):
 
             if isinstance(next, nodes.figure):
                 self.next_figure_ids.update(ids)
+                return
+
+            if isinstance(next, nodes.table):
+                self.next_table_ids.update(ids)
                 return
 
         except (IndexError, AttributeError):
@@ -840,18 +856,7 @@ class PandocTranslator(nodes.NodeVisitor):
         self.table = TableBuilder(node)
 
     def depart_table(self, node):
-        def plain_str(x):
-            return Plain([Str(x)])
         self.body.append(self.table.as_pandoc_ast())
-        # self.body.append(
-        #     Table(
-        #         [],
-        #         [AlignCenter(), AlignLeft()],
-        #         [0.15, 0.16],
-        #         [[plain_str("header0")], [plain_str("header1")]],
-        #         [[[plain_str("col0")], [plain_str("col0")]],
-        #          [[plain_str("col merged")], []]]
-        #         ))
         self.table = None
 
     visit_tgroup = _pass
@@ -882,12 +887,13 @@ class PandocTranslator(nodes.NodeVisitor):
 
     visit_figure = _push
 
-    def _get_figure_number(self, node):
-        """ Extract caption numbering
+    def _get_numref(self, node):
+        """ Extract the numref caption prefix associated with the given node
 
         :return:
             None if no numbering was found.
-            When a configuration option is missing it also reports a warning.
+            When a configuration option is missing it will return None and
+            reports a warning.
             In case of success, returns the string prefix (e.g., "Fig 42. ")
         """
         fig_type = self.builder.env.domains['std'].get_figtype(node)
@@ -918,6 +924,16 @@ class PandocTranslator(nodes.NodeVisitor):
         #       However, it could be part of the user defined prefix
         return prefix % '.'.join(map(str, fig_numbers)) + " "
 
+    def _get_numref_prefix(self, node):
+        """Convenience wrapper around _get_numref
+
+        :return:
+            [] when no numref is associated with the node.
+            In case of success, returns a list of pandoc Inline for the numref.
+        """
+        numref = self._get_numref(node)
+        return [Str(numref)] if numref else []
+
     def depart_figure(self, node):
         image = self.pop()[0]["c"][0]
         _, classes, opts = image["c"][0]
@@ -946,8 +962,7 @@ class PandocTranslator(nodes.NodeVisitor):
     visit_caption = _push
 
     def depart_caption(self, node):
-        fig_number = self._get_figure_number(node.parent)
-        prefix = [Str(fig_number)] if fig_number else []
+        prefix = self._get_numref_prefix(node.parent)
         self.caption = prefix + self.pop()
 
     visit_glossary = _push
