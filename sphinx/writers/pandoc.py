@@ -268,6 +268,7 @@ class PandocTranslator(nodes.NodeVisitor):
         self.next_section_ids = set()
         self.next_figure_ids = set()
         self.next_table_ids = set()
+        self.next_listing_ids = set()
         self.handled_abbrs = set()
 
     def _skip(self, node):
@@ -295,6 +296,10 @@ class PandocTranslator(nodes.NodeVisitor):
             pass
         id_set.clear()
         return id
+
+    def _is_listing(self, node):
+        return isinstance(node, nodes.container) and \
+               'literal-block-wrapper' in node.get('classes', [])
 
     def push(self, head=None):
         head = head or []
@@ -550,8 +555,14 @@ class PandocTranslator(nodes.NodeVisitor):
 
     def depart_container(self, node):
         contents = self.pop()
+        id = ""
+        opts = []
+        if self._is_listing(node):
+            id = self._pop_ids(self.next_listing_ids)
+            opts.append(["custom-style", "Table Caption"])
         if self.caption:
-            contents.insert(0, Para([Span(["", ["caption"], []], self.caption)]))
+            caption = Span([id, ["caption"], []], self.caption)
+            self.body.append(Div(["", ["caption"], opts], [Plain([caption])]))
         self.body.append(Div(["", ["container"], []], contents))
         self.caption = None
 
@@ -639,6 +650,9 @@ class PandocTranslator(nodes.NodeVisitor):
                 self.next_table_ids.update(ids)
                 return
 
+            if self._is_listing(next):
+                self.next_listing_ids.update(ids)
+                return
         except (IndexError, AttributeError):
             pass
 
