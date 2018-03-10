@@ -283,6 +283,19 @@ class PandocTranslator(nodes.NodeVisitor):
         contents = self.pop()
         self.body.append(contents)
 
+    def _pop_ids(self, id_set):
+        """Given a set of ids, pop an arbitrary element and clear the set
+
+        If no id is found, returns an empty string ("")
+        """
+        id = ""
+        try:
+            id = list(id_set)[0]
+        except IndexError:
+            pass
+        id_set.clear()
+        return id
+
     def push(self, head=None):
         head = head or []
         self.body_stack.append(self.body)
@@ -400,12 +413,7 @@ class PandocTranslator(nodes.NodeVisitor):
     def depart_title(self, node):
         contents = self.pop()
         if isinstance(node.parent, nodes.table):
-            id = ""
-            try:
-                id = list(self.next_table_ids)[0]
-            except IndexError:
-                pass
-            self.next_table_ids.clear()
+            id = self._pop_ids(self.next_table_ids)
             prefix = self._get_numref_prefix(node.parent)
             self.table.caption = [Span([id, [], []], prefix + contents)]
             return
@@ -420,12 +428,7 @@ class PandocTranslator(nodes.NodeVisitor):
                 self.in_section = 0
                 return
             assert self.in_section > 0
-            id = ""
-            try:
-                id = list(self.next_section_ids)[0]
-            except IndexError:
-                pass
-            self.next_section_ids.clear()
+            id = self._pop_ids(self.next_section_ids)
             self.body.append(Header(self.in_section, [id, [], []], contents))
         else:
             # TODO
@@ -944,10 +947,7 @@ class PandocTranslator(nodes.NodeVisitor):
                 opts.append([attr, self._convert_size(node[attr])])
         image["c"][1] = self.caption or []
         image["c"][2][1] = "fig:"
-        id = ""
-        if self.next_figure_ids:
-            id = list(self.next_figure_ids)[0]
-            self.next_figure_ids.clear()
+        id = self._pop_ids(self.next_figure_ids)
         self.body.append(Div(
             [id, ["figure"], []],
             [Para([image])] + (self.legend or [])))
