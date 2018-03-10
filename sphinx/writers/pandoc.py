@@ -1,3 +1,4 @@
+import itertools
 import json
 import re
 import sys
@@ -83,6 +84,27 @@ Subscript = elt('Subscript', 1)
 Superscript = elt('Superscript', 1)
 
 LineBlockLine = namedtuple('LineBlockLine', 'contents')
+
+
+def intercalate(x, l):
+    """Intercalate list x between each element of l
+
+    >>> intercalate([1, 2], [12, 13, 14])
+    [12, 1, 2, 13, 1, 2, 14]
+    >>> intercalate([56], [12])
+    [12]
+    >>> intercalate([1, 2], [12, 13])
+    [12, 1, 2, 13]
+    >>> intercalate([1], [])
+    []
+    """
+    return list(itertools.chain(*[[el] + x for el in l]))[:-len(x)]
+
+
+class DefListItemBuilder:
+    def __init__(self):
+        self.terms = []
+        self.defs = []
 
 
 class TableBuilder:
@@ -235,6 +257,7 @@ class PandocTranslator(nodes.NodeVisitor):
         self.caption = None
         self.legend = None
         self.table = None
+        self.def_list = None
 
         self.curfilestack = []
         self.footnotestack = []
@@ -470,8 +493,15 @@ class PandocTranslator(nodes.NodeVisitor):
     visit_list_item = _push
     depart_list_item = _pop_flat
 
-    visit_definition_list_item = _push
-    depart_definition_list_item = _pop_flat
+    def visit_definition_list_item(self, node):
+        self.def_list = DefListItemBuilder()
+
+    def depart_definition_list_item(self, node):
+        # Pandoc supports multiple definitions, but not multiple terms.
+        # So, we separate them by comma + space.
+        terms = intercalate([Str(","), Space()], self.def_list.terms)
+        self.body.append([terms, self.def_list.defs])
+        self.def_list = None
 
     def visit_term(self, node):
         for n in node[:]:
@@ -482,11 +512,18 @@ class PandocTranslator(nodes.NodeVisitor):
 
     def depart_term(self, node):
         contents = self.pop()
+        id = ""
         if node.get('ids'):
             # glossary term, wrap with a Span with the right id
             id = self.hypertarget(node['ids'][0])
-            contents = [Span([id, [], []], contents)]
-        self.body.append(contents)
+        contents = Span([id, [], []], contents)
+        self.def_list.terms.append(contents)
+
+    visit_definition = _push
+
+    def depart_definition(self, node):
+        contents = self.pop()
+        self.def_list.defs.append(contents)
 
     # TODO?
     visit_index = _skip
@@ -502,12 +539,6 @@ class PandocTranslator(nodes.NodeVisitor):
             contents.insert(0, Para([Span(["", ["caption"], []], self.caption)]))
         self.body.append(Div(["", ["container"], []], contents))
         self.caption = None
-
-    visit_definition = _push
-
-    def depart_definition(self, node):
-        contents = self.pop()
-        self.body.append([contents])  # singleton list mandatory
 
     visit_inline = _push
 
@@ -929,9 +960,10 @@ class PandocTranslator(nodes.NodeVisitor):
 
     depart_topic = _div_wrap("topic")
 
-    visit_centered = _push
-
-    depart_centered = _div_wrap("centered")
+    # TODO: fix test
+    # visit_centered = _push
+    #
+    # depart_centered = _div_wrap("centered")
 
     visit_number_reference = _push
 
