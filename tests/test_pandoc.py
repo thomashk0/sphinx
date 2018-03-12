@@ -19,6 +19,14 @@ def test_all(app, status, warning):
         print(parse_with_pandoc(ast))
 
 
+@pytest.mark.sphinx('pandoc', testroot='latex-table')
+def test_table(app, status, warning):
+    app.builder.build_all()
+    ast = app.outdir / app.config.master_doc + '.json'
+    with cd(app.outdir):
+        parse_with_pandoc(ast)
+
+
 @pytest.mark.sphinx('pandoc', testroot='numfig',
                     confoverrides={'numfig': True})
 def test_numfig(app, status, warning):

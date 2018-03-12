@@ -107,6 +107,17 @@ class DefListItemBuilder:
         self.defs = []
 
 
+class TableCell:
+    def __init__(self, content, colspan, rowspan):
+        self.content = content
+        self.colspan = colspan
+        self.rowspan = rowspan
+
+    @property
+    def width(self):
+        return 1 + self.colspan
+
+
 class TableBuilder:
     """A builder for pandoc tables
 
@@ -122,59 +133,81 @@ class TableBuilder:
         self.headers = []                        # type: List[unicode]
         self.rows = []
         self.node = node
-        self.colcount = 0
         self.colwidths = []                     # type: List[int]
         self.caption = None
 
         self.in_header = False
         self.currow = []
-        self.row = 0
-        self.col = 0
+
+    @staticmethod
+    def _row_width(row):
+        return sum(el.width for el in row)
+
+    def _gen_table(self, rows):
+        """Convert a matrix of cells into a grid (i.e., expand colspan, rowspan)
+        """
+        if not rows:
+            return []
+
+        width = max(map(TableBuilder._row_width, rows))
+        height = len(rows) + max(x.rowspan for x in rows[-1])
+        res = [[None for _ in range(width)] for _ in range(height)]
+        for i, row in enumerate(rows):
+            j = 0
+            for el in row:
+                while res[i][j] is not None:
+                    j += 1
+                indices = itertools.product(
+                    range(i, i + el.rowspan + 1),
+                    range(j, j + el.colspan + 1))
+                for kr, kc in indices:
+                    res[kr][kc] = []
+                res[i][j] = el.content
+
+        return res
 
     def start_thead(self):
         self.in_header = True
 
     def leave_thead(self):
-        assert self.in_header == True
+        assert self.in_header
         self.in_header = False
-        self.headers = self.rows
+        self.headers = self._gen_table(self.rows)
         self.rows = []
-        self.row = 0
 
     def add_colspec(self, width):
         self.colwidths.append(width)
-        self.colcount += 1
-
-    def add_header(self, content):
-        self.header.append(content)
 
     def next_row(self):
-        self.row += 1
         self.rows.append(self.currow)
         self.currow = []
-        self.col = 0
 
-    def add_cell(self, content, morecols):
+    def add_cell(self, content, morecols, morerows=0):
         if morecols > 0:
             logger.warning(
-                "pandoc doesn't support multicolumn cell, filling with empty "
-                "cell instead.",
+                "pandoc doesn't support colspan > 1, filling with empty cells "
+                "instead.",
                 location=self.node)
-        self.currow.extend([content] + [[] for _ in range(morecols)])
-        self.col += 1 + morecols
+        if morerows > 0:
+            logger.warning(
+                "pandoc doesn't support rowspan > 1, filling with empty cells "
+                "instead.",
+                location=self.node)
+        self.currow.append(TableCell(content, morecols, morerows))
 
     def as_pandoc_ast(self):
         if len(self.headers) > 1:
-            logger.warning("pandoc doesn't support more than one row in a table"
-                           " header", location=self.node)
-        headers = self.headers[0] if len(self.headers) > 0 else []
+            logger.warning(
+                "pandoc doesn't support more than one row in a table header, "
+                "keeping only the first row",
+                location=self.node)
+        header = self.headers[0] if len(self.headers) > 0 else []
         caption = self.caption or []
-        column_align = [AlignDefault() for _ in range(self.colcount)]
+        column_align = [AlignDefault() for _ in range(len(self.colwidths))]
         total_width = sum(self.colwidths)
         relative_widths = [float(x) / total_width for x in self.colwidths]
-        return Table(caption, column_align, relative_widths,
-                     headers,
-                     self.rows)
+        rows = self._gen_table(self.rows)
+        return Table(caption, column_align, relative_widths, header, rows)
 
 
 class PandocWriter(Writer):
@@ -900,7 +933,8 @@ class PandocTranslator(nodes.NodeVisitor):
 
     def depart_entry(self, node):
         contents = self.pop()
-        self.table.add_cell(contents, node.get('morecols', 0))
+        self.table.add_cell(
+            contents, node.get('morecols', 0), node.get('morerows', 0))
 
     visit_figure = _push
 
