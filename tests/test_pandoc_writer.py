@@ -5,6 +5,7 @@ import subprocess
 import json
 
 from sphinx.util.osutil import cd
+from sphinx.writers.pandoc import Str
 
 
 def parse_with_pandoc(file, to='native'):
@@ -63,7 +64,19 @@ def test_table(app, status, warning):
     assert rows[2][0] == [], "rowspan empty filling failed"
     assert rows[2][1] != []
     assert rows[2][2] == []
-    
+
+
+@pytest.mark.sphinx('pandoc')
+def test_rubric(app, status, warning):
+    app.builder.build_all()
+    warnings = warning.getvalue()
+    ast = app.outdir / (app.config.master_doc + '.json')
+    ast_json = json.loads(ast.text(encoding='utf-8'))
+    strong = list(find_pandoc_node(ast_json, 'Strong'))
+    assert [Str("Footnotes")] not in strong, \
+        "rubric 'Footnotes' must have been removed"
+    assert [Str("Citations")] in strong
+
 
 @pytest.mark.sphinx('pandoc', testroot='numfig',
                     confoverrides={'numfig': True})

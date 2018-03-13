@@ -47,20 +47,19 @@ BlockQuote = elt('BlockQuote', 1)
 BulletList = elt('BulletList', 1)
 CodeBlock = elt('CodeBlock', 2)
 DefinitionList = elt('DefinitionList', 1)
-Div = elt('Div', 2)  # TODO
+Div = elt('Div', 2)
 Header = elt('Header', 3)
 HorizontalRule = elt('HorizontalRule', 0)
 LineBlock = elt('LineBlock', 1)
 MetaInlines = elt('MetaInlines', 1)
-Null = elt('Null', 0)  # TODO
+Null = elt('Null', 0)
 OrderedList = elt('OrderedList', 2)
 Para = elt('Para', 1)
 Plain = elt('Plain', 1)
-RawBlock = elt('RawBlock', 2)  # TODO
-Table = elt('Table', 5)  # TODO
+RawBlock = elt('RawBlock', 2)
+Table = elt('Table', 5)
 
 # Inline elements
-# Strikeout = elt('Strikeout', 1)  # unsupported
 Cite = elt('Cite', 2)
 NormalCitation = elt('NormalCitation', 0)
 Code = elt('Code', 2)
@@ -68,16 +67,16 @@ DisplayMath = elt('DisplayMath', 0)
 Emph = elt('Emph', 1)
 Image = elt('Image', 3)
 InlineMath = elt('InlineMath', 0)
-LineBreak = elt('LineBreak', 0)  # TODO
-Link = elt('Link', 3)  # TODO (partial)
+LineBreak = elt('LineBreak', 0)
+Link = elt('Link', 3)
 Math = elt('Math', 2)
 Note = elt('Note', 1)
-Quoted = elt('Quoted', 2)  # TODO
-RawInline = elt('RawInline', 2)  # TODO
-SmallCaps = elt('SmallCaps', 1)  # TODO
-SoftBreak = elt('SoftBreak', 0)  # TODO
+Quoted = elt('Quoted', 2)
+RawInline = elt('RawInline', 2)
+SmallCaps = elt('SmallCaps', 1)
+SoftBreak = elt('SoftBreak', 0)
 Space = elt('Space', 0)
-Span = elt('Span', 2)  # TODO (partial)
+Span = elt('Span', 2)
 Str = elt('Str', 1)
 Strong = elt('Strong', 1)
 Subscript = elt('Subscript', 1)
@@ -143,7 +142,8 @@ class TableBuilder:
     def _row_width(row):
         return sum(el.width for el in row)
 
-    def _gen_table(self, rows):
+    @staticmethod
+    def _gen_table(rows):
         """Convert a matrix of cells into a grid (i.e., expand colspan, rowspan)
         """
         if not rows:
@@ -206,7 +206,7 @@ class TableBuilder:
         column_align = [AlignDefault() for _ in range(len(self.colwidths))]
         total_width = sum(self.colwidths)
         relative_widths = [float(x) / total_width for x in self.colwidths]
-        rows = self._gen_table(self.rows)
+        rows = TableBuilder._gen_table(self.rows)
         return Table(caption, column_align, relative_widths, header, rows)
 
 
@@ -317,7 +317,8 @@ class PandocTranslator(nodes.NodeVisitor):
         contents = self.pop()
         self.body.append(contents)
 
-    def _pop_ids(self, id_set):
+    @staticmethod
+    def _pop_ids(id_set):
         """Given a set of ids, pop an arbitrary element and clear the set
 
         If no id is found, returns an empty string ("")
@@ -330,7 +331,8 @@ class PandocTranslator(nodes.NodeVisitor):
         id_set.clear()
         return id
 
-    def _is_listing(self, node):
+    @staticmethod
+    def _is_listing(node):
         return isinstance(node, nodes.container) and \
                'literal-block-wrapper' in node.get('classes', [])
 
@@ -364,10 +366,12 @@ class PandocTranslator(nodes.NodeVisitor):
             id = self.curfilestack[-1] + ':' + id
         return id
 
-    def is_inline(self, node):
+    @staticmethod
+    def is_inline(node):
         return isinstance(node.parent, nodes.TextElement)
 
-    def get_text(self, text):
+    @staticmethod
+    def get_text(text):
         tokens = []
 
         def matcher(m):
@@ -380,10 +384,12 @@ class PandocTranslator(nodes.NodeVisitor):
         RE_TOKENS.sub(matcher, text)
         return tokens
 
-    def hyperlink(self, id, contents):
+    @staticmethod
+    def hyperlink(id, contents):
         return Link(["", [], []], contents, [id, ""])
 
-    def collect_footnotes(self, node):
+    @staticmethod
+    def collect_footnotes(node):
         def footnotes_under(n):
             if isinstance(n, nodes.footnote):
                 yield n
@@ -441,6 +447,17 @@ class PandocTranslator(nodes.NodeVisitor):
 
     def depart_section(self, node):
         self.in_section = max(self.in_section - 1, self.top_in_section - 1)
+
+    visit_rubric = _push
+
+    def depart_rubric(self, node):
+        contents = self.pop()
+        if len(contents) > 0 and contents[0].get('c') == 'Footnotes':
+            # As within the latex backend we pattern match the 'Footnotes'
+            # section and exclude it from the output
+            return
+        # NOTE: a rubic is currently implemented as a named paragraph
+        self.body.append(Para([Strong(contents)]))
 
     def visit_title(self, node):
         if isinstance(node.parent, nodes.Admonition):
@@ -885,14 +902,14 @@ class PandocTranslator(nodes.NodeVisitor):
     visit_seealso = _push
     # NOTE: for some reasons, one style is created for each todo...
     # support is left as an improvement
-    # visit_todo_node = _push
+    visit_todo_node = _push
 
     depart_note = _admonition("note", "Note", style="Note")
     depart_important = _admonition("important", "Important", style="Warning")
     depart_warning = _admonition("warning", "Warning", style="Warning")
-    depart_tip = _admonition("tip", "Tip", style="Tiplo")
+    depart_tip = _admonition("tip", "Tip", style="Tip")
     depart_seealso = _admonition("seealso", "See Also", style="Tip")
-    # depart_todo_node = _admonition("todo", "Todo", style="Warning")
+    depart_todo_node = _admonition("todo", "Todo", style="Warning")
 
     visit_admonition = _push
 
@@ -1023,10 +1040,11 @@ class PandocTranslator(nodes.NodeVisitor):
 
     depart_topic = _div_wrap("topic")
 
-    # TODO: fix test
-    # visit_centered = _push
-    #
-    # depart_centered = _div_wrap("centered")
+    visit_centered = _push
+
+    def depart_centered(self, node):
+        contents = self.pop()
+        self.body.append(_div(["centered"], [Plain(contents)]))
 
     visit_number_reference = _push
 
