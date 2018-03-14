@@ -90,8 +90,8 @@ def test_rubric(app, status, warning):
     assert [Str("Citations")] in strong
 
 
-@pytest.mark.sphinx('pandoc', testroot='numfig',
-                    confoverrides={'numfig': True})
+@pytest.mark.sphinx(
+    'pandoc', testroot='numfig', confoverrides={'numfig': True})
 def test_numfig(app, status, warning):
     app.builder.build_all()
     warnings = warning.getvalue()

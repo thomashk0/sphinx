@@ -1,15 +1,30 @@
+# -*- coding: utf-8 -*-
+"""
+    sphinx.writers.pandoc
+    ~~~~~~~~~~~~~~~~~~~~~
+
+    Pandoc AST writer.
+
+    :copyright: Copyright 2007-2018 by the Sphinx team, see AUTHORS.
+    :license: BSD, see LICENSE for details.
+"""
+
 import itertools
 import json
 import re
 import sys
 from collections import namedtuple
 from os import path
+from typing import TYPE_CHECKING
 
 from docutils import nodes
 from docutils.writers import Writer
 
 from sphinx import addnodes
 from sphinx.util import logging
+
+if TYPE_CHECKING:
+    from typing import Any, Dict, List, Tuple, Set  # NOQA
 
 logger = logging.getLogger(__name__)
 RE_TOKENS = re.compile(r'(?P<white>\s+)|(?P<nonwhite>\S+)')
@@ -31,6 +46,7 @@ def elt(eltType, numargs):
         return {'t': eltType, 'c': xs}
 
     return fun
+
 
 # Below are defined a set of contructors for most important pandoc AST types.
 # They must match the pandoc API reference (see
@@ -102,8 +118,8 @@ def intercalate(glue, l):
 
 class DefListItemBuilder:
     def __init__(self):
-        self.terms = []
-        self.defs = []
+        self.terms = []  # type: List[Any]
+        self.defs = []  # type: List[Any]
 
 
 class TableCell:
@@ -127,16 +143,17 @@ class TableBuilder:
         In cases where input table cannot be converted, we try a "best looking"
         conversion (yeah, that's quite subjective) and report a warning.
     """
+
     def __init__(self, node):
         # type: (nodes.table) -> None
-        self.headers = []                        # type: List[unicode]
-        self.rows = []
+        self.headers = []  # type: List[unicode]
+        self.rows = []  # type: List[List[Any]]
         self.node = node
-        self.colwidths = []                     # type: List[int]
+        self.colwidths = []  # type: List[int]
         self.caption = None
 
         self.in_header = False
-        self.currow = []
+        self.currow = []  # type: List[Any]
 
     @staticmethod
     def _row_width(row):
@@ -158,10 +175,9 @@ class TableBuilder:
                 while res[i][j] is not None:
                     j += 1
                 indices = itertools.product(
-                    range(i, i + el.rowspan + 1),
-                    range(j, j + el.colspan + 1))
+                    range(i, i + el.rowspan + 1), range(j, j + el.colspan + 1))
                 for kr, kc in indices:
-                    res[kr][kc] = []
+                    res[kr][kc] = []  # type: ignore
                 res[i][j] = el.content
 
         return res
@@ -221,9 +237,11 @@ class PandocWriter(Writer):
         meta = {}
         if visitor.title is not None:
             meta['title'] = visitor.title
-        output = {'blocks': visitor.body,
-                  'pandoc-api-version': [1, 17, 3],
-                  'meta': meta}
+        output = {
+            'blocks': visitor.body,
+            'pandoc-api-version': [1, 17, 3],
+            'meta': meta
+        }
         self.output = json.dumps(output, indent=2)
 
 
@@ -244,9 +262,10 @@ def _div(div_classes, contents, style=None):
 
 def _admonition_contents(name, title, contents, style=None):
     title_style = style + "Title" if style else None
-    return Div(["", [name], []],
-               [_div(["admonition-title"], [Para([Str(title)])], style=title_style),
-                _div(["adminition-title"], contents, style=style)])
+    return Div(["", [name], []], [
+        _div(["admonition-title"], [Para([Str(title)])], style=title_style),
+        _div(["adminition-title"], contents, style=style)
+    ])
 
 
 def _admonition(name, title, style=None):
@@ -285,24 +304,24 @@ class PandocTranslator(nodes.NodeVisitor):
         self.in_parsed_literal = 0
         self.in_toc = False
 
-        self.body_stack = []
-        self.body = []
+        self.body_stack = []  # type: List[Any]
+        self.body = []  # type: List[Any]
         self.title = None
         self.caption = None
         self.legend = None
         self.table = None
         self.def_list = None
 
-        self.curfilestack = []
-        self.footnotestack = []
-        self.pending_footnotes = []
+        self.curfilestack = []  # type: List[unicode]
+        self.footnotestack = [
+        ]  # type: List[Dict[unicode, Tuple[collected_footnote, bool]]]
         self.hlsettingstack = \
             2 * [[builder.config.highlight_language, sys.maxsize]]
-        self.next_section_ids = set()
-        self.next_figure_ids = set()
-        self.next_table_ids = set()
-        self.next_listing_ids = set()
-        self.handled_abbrs = set()
+        self.next_section_ids = set()  # type: Set[unicode]
+        self.next_figure_ids = set()  # type: Set[unicode]
+        self.next_table_ids = set()  # type: Set[unicode]
+        self.next_listing_ids = set()  # type: Set[unicode]
+        self.handled_abbrs = set()  # type: Set[unicode]
 
     def _skip(self, node):
         raise nodes.SkipNode
@@ -333,8 +352,8 @@ class PandocTranslator(nodes.NodeVisitor):
 
     @staticmethod
     def _is_listing(node):
-        return isinstance(node, nodes.container) and \
-               'literal-block-wrapper' in node.get('classes', [])
+        return (isinstance(node, nodes.container) and
+                'literal-block-wrapper' in node.get('classes', []))
 
     def push(self, head=None):
         head = head or []
@@ -350,12 +369,7 @@ class PandocTranslator(nodes.NodeVisitor):
     def dispatch_visit(self, node):
         if isinstance(node.parent, nodes.sidebar):
             raise nodes.SkipNode
-        logger.debug("VISIT %s", node.tagname)
-        return super().dispatch_visit(node)
-
-    def dispatch_departure(self, node):
-        logger.debug("DEPART %s", node.tagname)
-        return super().dispatch_departure(node)
+        return super(PandocTranslator, self).dispatch_visit(node)
 
     def unknown_visit(self, node):
         logger.warning("not implemented: '%s'", node.tagname)
@@ -435,10 +449,8 @@ class PandocTranslator(nodes.NodeVisitor):
     def visit_Text(self, node):
         self.body.extend(self.get_text(node.astext()))
         # glue space and footnote reference
-        if (self.body
-                and self.body[-1]["t"] == "Space"
-                and isinstance(node.next_node(siblings=True),
-                               nodes.footnote_reference)):
+        if (self.body and self.body[-1]["t"] == "Space" and isinstance(
+                node.next_node(siblings=True), nodes.footnote_reference)):
             self.body.pop()
         raise nodes.SkipNode
 
@@ -680,8 +692,8 @@ class PandocTranslator(nodes.NodeVisitor):
             except IndexError:
                 # last node in parent, look at next after parent
                 # (for section of equal level)
-                next = node.parent.parent[
-                    node.parent.parent.index(node.parent)]
+                next = node.parent.parent[node.parent.parent.index(
+                    node.parent)]
 
             ids = set()
             if node.get('refid'):
@@ -732,7 +744,11 @@ class PandocTranslator(nodes.NodeVisitor):
         if node.hasattr('start'):
             start = node['start']
         self.body.append(
-            OrderedList([start, {"t": style}, {"t": delim}], contents))
+            OrderedList([start, {
+                "t": style
+            }, {
+                "t": delim
+            }], contents))
 
     def visit_footnote_reference(self, node):
         num = node.astext().strip()
@@ -780,7 +796,9 @@ class PandocTranslator(nodes.NodeVisitor):
                         yield data.contents
                     return
                 for el in data:
-                    yield from unfold(el, depth + 1)
+                    # py2 compatible 'yield from unfold(el, depth + 1)'
+                    for e in unfold(el, depth + 1):
+                        yield e
 
             contents = self.pop()
             self.body.append(LineBlock(list(unfold(contents, -1))))
@@ -821,14 +839,17 @@ class PandocTranslator(nodes.NodeVisitor):
         try:
             anchor = self.hypertarget(node['ids'][0])
         except IndexError:
-            logger.warning("Failed to create reference target: no ids found",
-                           location=node)
+            logger.warning(
+                "Failed to create reference target: no ids found",
+                location=node)
             return
         # Expected contents shape:
         #   contents[0] -> Str (label)
         #   contents[1] -> Para (label description)
-        cite_para = [Span([anchor, ["citation-label"], []], [contents[0]]),
-                     Space()] + contents[1]['c']
+        cite_para = [
+            Span([anchor, ["citation-label"], []], [contents[0]]),
+            Space()
+        ] + contents[1]['c']
         self.body.append(Div(["citation", [], []], [Para(cite_para)]))
 
     def visit_literal(self, node):
@@ -884,7 +905,8 @@ class PandocTranslator(nodes.NodeVisitor):
             if node.hasattr(attr):
                 attrs.append([attr, self._convert_size(node[attr])])
 
-        if self.builder.config.pandoc_convert_svg_to_png and uri.endswith('.svg'):
+        if self.builder.config.pandoc_convert_svg_to_png and uri.endswith(
+                '.svg'):
             uri = path.splitext(uri)[0] + '.png'
         self.body.append(Para([Image(["", [], attrs], [alt], [uri, ""])]))
         raise nodes.SkipNode
@@ -950,8 +972,8 @@ class PandocTranslator(nodes.NodeVisitor):
 
     def depart_entry(self, node):
         contents = self.pop()
-        self.table.add_cell(
-            contents, node.get('morecols', 0), node.get('morerows', 0))
+        self.table.add_cell(contents, node.get('morecols', 0),
+                            node.get('morerows', 0))
 
     visit_figure = _push
 
@@ -966,13 +988,13 @@ class PandocTranslator(nodes.NodeVisitor):
         """
         fig_type = self.builder.env.domains['std'].get_figtype(node)
         if not fig_type:
-            logger.warning("figure type {} is unknown".format(fig_type),
-                           location=node)
+            logger.warning(
+                "figure type {} is unknown".format(fig_type), location=node)
             return None
 
         if len(node['ids']) == 0:
-            logger.warning("No ids assigned for {}".format(node.tagname),
-                           location=node)
+            logger.warning(
+                "No ids assigned for {}".format(node.tagname), location=node)
             return None
         fig_id = node['ids'][0]
 
@@ -1013,9 +1035,8 @@ class PandocTranslator(nodes.NodeVisitor):
         image["c"][1] = self.caption or []
         image["c"][2][1] = "fig:"
         id = self._pop_ids(self.next_figure_ids)
-        self.body.append(Div(
-            [id, ["figure"], []],
-            [Para([image])] + (self.legend or [])))
+        self.body.append(
+            Div([id, ["figure"], []], [Para([image])] + (self.legend or [])))
         self.caption = None
         self.legend = None
 
