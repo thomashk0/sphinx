@@ -8,6 +8,18 @@ from sphinx.util.osutil import cd
 from sphinx.writers.pandoc import Str
 
 
+def has_pandoc():
+    try:
+        subprocess.check_call(['pandoc', '--version'])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+pytestmark = pytest.mark.skipif(
+    not has_pandoc(), reason="pandoc is not installed")
+
+
 def parse_with_pandoc(file, to='native'):
     return subprocess.check_output(
         ['pandoc', '-f', 'json', '-t', to, '--standalone', file])
