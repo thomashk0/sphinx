@@ -48,7 +48,7 @@ def elt(eltType, numargs):
     return fun
 
 
-# Below are defined a set of contructors for most important pandoc AST types.
+# Below are defined a set of constructors for most important pandoc AST types.
 # They must match the pandoc API reference (see
 # http://hackage.haskell.org/package/pandoc-types-1.17.3.1/docs/Text-Pandoc-Definition.html)
 
@@ -443,7 +443,6 @@ class PandocTranslator(nodes.NodeVisitor):
 
     visit_comment = _skip
 
-    # already handled
     visit_substitution_definition = _skip
 
     def visit_Text(self, node):
@@ -908,7 +907,16 @@ class PandocTranslator(nodes.NodeVisitor):
         if self.builder.config.pandoc_convert_svg_to_png and uri.endswith(
                 '.svg'):
             uri = path.splitext(uri)[0] + '.png'
-        self.body.append(Para([Image(["", [], attrs], [alt], [uri, ""])]))
+
+        img = Image(["", [], attrs], [alt], [uri, ""])
+        content = Para([img])
+        if node.parent.tagname == 'paragraph':
+            # NOTE: a substitution with an image will already generate a
+            # paragraph. So, we need to return just the inline image in that
+            # case.
+            content = img
+
+        self.body.append(content)
         raise nodes.SkipNode
 
     def visit_acks(self, node):

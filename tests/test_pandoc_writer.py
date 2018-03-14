@@ -98,3 +98,12 @@ def test_numfig(app, status, warning):
     ast = app.outdir / app.config.master_doc + '.json'
     with cd(app.outdir):
         parse_with_pandoc(ast)
+
+
+@pytest.mark.sphinx('pandoc', testroot='pandoc')
+def test_substitution(app, status, warning):
+    app.builder.build_all()
+    warnings = warning.getvalue()
+    check_pandoc_parsing(app)
+    assert "warning.png" in warnings, "must warn about image not found"
+    assert "warning2.png" in warnings, "must warn about image not found"
