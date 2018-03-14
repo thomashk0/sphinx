@@ -85,19 +85,19 @@ Superscript = elt('Superscript', 1)
 LineBlockLine = namedtuple('LineBlockLine', 'contents')
 
 
-def intercalate(x, l):
-    """Intercalate list x between each element of l
+def intercalate(glue, l):
+    """Join elements of list `l` using list `glue`.
 
-    >>> intercalate([1, 2], [12, 13, 14])
-    [12, 1, 2, 13, 1, 2, 14]
-    >>> intercalate([56], [12])
-    [12]
-    >>> intercalate([1, 2], [12, 13])
-    [12, 1, 2, 13]
-    >>> intercalate([1], [])
+    >>> intercalate(['a', 'b'], [])
     []
+    >>> intercalate(['a', 'b'], [12])
+    [12]
+    >>> intercalate(['a', 'b'], [12, 13])
+    [12, 'a', 'b', 13]
+    >>> intercalate(['a', 'b'], [12, 13, 14])
+    [12, 'a', 'b', 13, 'a', 'b', 14]
     """
-    return list(itertools.chain(*[[el] + x for el in l]))[:-len(x)]
+    return l[:1] + [part for el in l[1:] for part in glue + [el]]
 
 
 class DefListItemBuilder:
