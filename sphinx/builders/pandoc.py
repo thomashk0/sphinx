@@ -15,8 +15,6 @@ from sphinx.writers.pandoc import PandocTranslator, PandocWriter
 
 logger = logging.getLogger(__name__)
 
-# TODO: cleanup, test, test multiple document merge
-
 
 class PandocBuilder(Builder):
     name = 'pandoc'
@@ -31,7 +29,8 @@ class PandocBuilder(Builder):
         self.fignumbers = {}
 
     def get_outdated_docs(self):
-        return 'all documents'  # for now
+        # TODO: support lazy rebuild (see StandaloneHTMLBuilder)
+        return 'all documents'
 
     def get_target_uri(self, docname, typ=None):
         if docname not in self.docnames:
@@ -44,11 +43,12 @@ class PandocBuilder(Builder):
         return self.get_target_uri(to, typ)
 
     def init_document_data(self):
-        preliminary_document_data = [list(x) for x in self.config.pandoc_documents]
+        preliminary_document_data = [
+            list(x) for x in self.config.pandoc_documents]
         if not preliminary_document_data:
             logger.warning(
-                'no "pandoc_documents" config value found; no documents '
-                'will be written')
+                "no 'pandoc_documents' config value found; no documents will "
+                "be written")
             return
         self.titles = []
         for entry in preliminary_document_data:
@@ -126,8 +126,8 @@ class PandocBuilder(Builder):
         if self.images:
             width = self.config.pandoc_options.get('svg_render_width', 1024)
             stringify_func = ImageAdapter(self.app.env).get_original_image_uri
-            for src in status_iterator(self.images, 'copying images... ',
-                                       "brown",
+            for src in status_iterator(self.images, "copying images... ",
+                                       'brown',
                                        len(self.images),
                                        self.app.verbosity,
                                        stringify_func=stringify_func):
