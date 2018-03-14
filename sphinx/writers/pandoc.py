@@ -884,7 +884,7 @@ class PandocTranslator(nodes.NodeVisitor):
             if node.hasattr(attr):
                 attrs.append([attr, self._convert_size(node[attr])])
 
-        if uri.endswith('.svg'):
+        if self.builder.config.pandoc_convert_svg_to_png and uri.endswith('.svg'):
             uri = path.splitext(uri)[0] + '.png'
         self.body.append(Para([Image(["", [], attrs], [alt], [uri, ""])]))
         raise nodes.SkipNode

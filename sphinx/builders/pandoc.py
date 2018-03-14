@@ -124,6 +124,7 @@ class PandocBuilder(Builder):
     def copy_image_files(self):
         # type: () -> None
         if self.images:
+            width = self.config.pandoc_options.get('svg_render_width', 1024)
             stringify_func = ImageAdapter(self.app.env).get_original_image_uri
             for src in status_iterator(self.images, 'copying images... ',
                                        "brown",
@@ -133,12 +134,12 @@ class PandocBuilder(Builder):
                 dest = self.images[src]
 
                 # SVG to PNG
-                if src.endswith('.svg'):
+                if self.config.pandoc_convert_svg_to_png and src.endswith('.svg'):
+
                     dest = path.splitext(dest)[0] + '.png'
                     logger.info("converting %s to %s", src, dest)
                     subprocess.check_call(
-                        ['inkscape', '-w', '2048',
-                         '-e', path.join(self.outdir, dest),
+                        ['inkscape', '-w', str(width), '-e', path.join(self.outdir, dest),
                          path.join(self.srcdir, src)],
                         stdout=subprocess.DEVNULL)
                     continue
@@ -156,6 +157,7 @@ def setup(app):
                          lambda self: [(self.master_doc, self.project, 'AUTHOR')],
                          None)
     app.add_config_value('pandoc_force_absolute_size', False, 'pandoc')
+    app.add_config_value('pandoc_convert_svg_to_png', True, 'pandoc')
     app.add_config_value('pandoc_options', {}, 'pandoc')
 
     return {
