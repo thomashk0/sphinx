@@ -489,12 +489,14 @@ class PandocTranslator(nodes.NodeVisitor):
             return
 
         if isinstance(node.parent, nodes.section):
+            id = self._pop_ids(self.next_section_ids)
             if self.title is None:
+                if id:
+                    contents = [Span([id, [], []], contents)]
                 self.title = MetaInlines(contents)
                 self.in_section = 0
                 return
             assert self.in_section > 0
-            id = self._pop_ids(self.next_section_ids)
             self.body.append(Header(self.in_section, [id, [], []], contents))
         else:
             # TODO

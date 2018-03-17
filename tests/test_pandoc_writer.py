@@ -45,12 +45,33 @@ def find_pandoc_node(tree, node_type):
                 yield el
 
 
+def check_internal_refs(json_ast, ignore=set(), ignore_cat=set()):
+    """Checks internal references consistency in a pandoc document
+    """
+    def _keep_node(x):
+        if x in ignore:
+            return False
+
+        cat = x[1:].split(':')[0]
+        return cat not in ignore_cat
+
+    refs = set(node[2][0] for node in find_pandoc_node(json_ast, 'Link')
+               if _keep_node(node[2][0]))
+
+    ids = set(node[0][0] for node in find_pandoc_node(json_ast, 'Span'))
+    ids.update(set(node[0][0] for node in find_pandoc_node(json_ast, 'Div')))
+    ids.update(set(node[1][0] for node in find_pandoc_node(json_ast, 'Header')))
+
+    for r in refs:
+        if r.startswith('#'):
+            assert r[1:] in ids, \
+                "every reference must have an associated span id"
+
+
 @pytest.mark.sphinx('pandoc')
 def test_all(app, status, warning):
     app.builder.build_all()
-    ast = app.outdir / app.config.master_doc + '.json'
-    with cd(app.outdir):
-        parse_with_pandoc(ast)
+    check_pandoc_parsing(app)
 
 
 @pytest.mark.sphinx('pandoc', testroot='latex-table')
@@ -95,9 +116,10 @@ def test_rubric(app, status, warning):
 def test_numfig(app, status, warning):
     app.builder.build_all()
     warnings = warning.getvalue()
-    ast = app.outdir / app.config.master_doc + '.json'
-    with cd(app.outdir):
-        parse_with_pandoc(ast)
+    check_pandoc_parsing(app)
+    ast = app.outdir / (app.config.master_doc + '.json')
+    json_ast = json.loads(ast.text(encoding='utf-8'))
+    check_internal_refs(json_ast)
 
 
 @pytest.mark.sphinx('pandoc', testroot='pandoc')
