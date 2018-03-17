@@ -25,6 +25,16 @@ def parse_with_pandoc(file, to='native'):
         ['pandoc', '-f', 'json', '-t', to, '--standalone', file])
 
 
+def parse_json_ast(app):
+    ast = app.outdir / (app.config.master_doc + '.json')
+    return json.loads(ast.text(encoding='utf-8'))
+
+
+def json_content(app):
+    ast = app.outdir / (app.config.master_doc + '.json')
+    return ast.text(encoding='utf-8')
+
+
 def check_pandoc_parsing(app):
     ast = app.outdir / (app.config.master_doc + '.json')
     with cd(app.outdir):
@@ -83,8 +93,7 @@ def test_table(app, status, warning):
     assert "rowspan > 1" in warnings, "should warn about rowspan policy"
     assert "colspan > 1" in warnings, "should warn about colspan policy"
 
-    ast = app.outdir / (app.config.master_doc + '.json')
-    json_ast = json.loads(ast.text(encoding='utf-8'))
+    json_ast = parse_json_ast(app)
     tables = list(find_pandoc_node(json_ast, 'Table'))
     for t in tables:
         rows = t[4]
@@ -129,3 +138,29 @@ def test_substitution(app, status, warning):
     check_pandoc_parsing(app)
     assert "warning.png" in warnings, "must warn about image not found"
     assert "warning2.png" in warnings, "must warn about image not found"
+    json_str = json_content(app)
+    assert "42%" in json_str
+
+
+@pytest.mark.sphinx('pandoc', testroot='pandoc',
+                    confoverrides={'pandoc_force_absolute_size': True})
+def test_pandoc_resize_warn(app, status, warning):
+    app.builder.build_all()
+    warnings = warning.getvalue()
+    assert "requires textwidth" in warnings, \
+        "warns about missing configuration"
+    json_ast = json_content(app)
+    assert "42%" in json_ast, "no size conversion was done"
+
+
+@pytest.mark.sphinx('pandoc', testroot='pandoc',
+                    confoverrides={'pandoc_force_absolute_size': True,
+                                   'pandoc_options': {'textwidth': (40, 'cm')}})
+def test_pandoc_resize_ok(app, status, warning):
+    app.builder.build_all()
+    warnings = warning.getvalue()
+    assert "requires textwidth" not in warnings, \
+        "warns about missing configuration"
+    json_ast = json_content(app)
+    assert "42%" not in json_ast
+    assert "16.8cm" in json_ast

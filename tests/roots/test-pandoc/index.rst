@@ -13,6 +13,7 @@ Inline Image
 Paragraph 3
 
 .. image:: warning2.png
+    :width: 42%
 
 Paragraph 4
 

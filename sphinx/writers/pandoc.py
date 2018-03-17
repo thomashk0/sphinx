@@ -292,6 +292,7 @@ class PandocTranslator(nodes.NodeVisitor):
     def __init__(self, document, builder):
         nodes.NodeVisitor.__init__(self, document)
         self.builder = builder
+        self._convert_size = self._gen_convert_size(builder)
 
         self.top_in_section = 1
         self.in_section = 0
@@ -335,6 +336,43 @@ class PandocTranslator(nodes.NodeVisitor):
     def _pop_flat(self, node):
         contents = self.pop()
         self.body.append(contents)
+
+    @staticmethod
+    def _gen_convert_size(builder):
+        """Create a size conversion function
+
+        Not all pandoc backends provide support for relative size (e.g., the
+        docx backend does not). By default, no conversion is applied, the user
+        needs to set the option pandoc_force_absolute_size = True to enable
+        conversion. In such case, the maximum size (i.e., the 100% value) must
+        also be provided ('textwidth' attribute in pandoc_options config
+        values).
+
+        Defaults to the identity function (no conversion applied)
+        """
+        def identity(x):
+            return x
+
+        if not builder.config.pandoc_force_absolute_size:
+            return identity
+
+        textwidth = builder.config.pandoc_options.get('textwidth', None)
+        if not textwidth:
+            logger.warning(
+                "using options 'pandoc_force_absolute_size' requires textwidth"
+                "to be set in pandoc_options. For instance, define\n"
+                "pandoc_options = {'textwidth': (16, 'cm')} in your conf.py")
+            return identity
+
+        def convert(measure):
+            if not measure.endswith('%'):
+                return measure
+
+            width, unit = textwidth
+            f = float(measure[:-1])
+            return str(f * width / 100) + unit
+
+        return convert
 
     @staticmethod
     def _pop_ids(id_set):
@@ -860,33 +898,6 @@ class PandocTranslator(nodes.NodeVisitor):
     visit_block_quote = _push
 
     depart_block_quote = _pop_with(BlockQuote)
-
-    def _convert_size(self, measure):
-        """Convert a relative distance (e.g., 12%) to an absolute one
-
-        Not all pandoc backends provide support for relative size (e.g., the
-        docx backend does not). By default, no conversion is applied, the user
-        needs to set the option pandoc_force_absolute_size = True to enable
-        conversion. In such case, the maximum size (i.e., the 100% value) must
-        also be provided ('textwidth' attribute in pandoc_options config
-        values).
-        """
-        if not self.builder.config.pandoc_force_absolute_size:
-            return measure
-
-        if not measure.endswith('%'):
-            return measure
-
-        textwidth = self.builder.config.pandoc_options.get('textwidth', None)
-        if not textwidth:
-            logger.warning(
-                "using options 'pandoc_force_absolute_size' requires textwidth"
-                "to be set in pandoc_options. For instance, define\n"
-                "pandoc_options = {'textwidth': (16, 'cm')} in your conf.py")
-            return measure
-        width, unit = textwidth
-        f = float(measure[:-1])
-        return str(f * width / 100) + unit
 
     def visit_image(self, node):
         if node['uri'] in self.builder.images:
