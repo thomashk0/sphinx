@@ -144,13 +144,14 @@ class TableBuilder:
         conversion (yeah, that's quite subjective) and report a warning.
     """
 
-    def __init__(self, node):
+    def __init__(self, node, width):
         # type: (nodes.table) -> None
         self.headers = []  # type: List[unicode]
         self.rows = []  # type: List[List[Any]]
         self.node = node
         self.colwidths = []  # type: List[int]
         self.caption = None
+        self.width = width
 
         self.in_header = False
         self.currow = []  # type: List[Any]
@@ -221,7 +222,8 @@ class TableBuilder:
         caption = self.caption or []
         column_align = [AlignDefault() for _ in range(len(self.colwidths))]
         total_width = sum(self.colwidths)
-        relative_widths = [float(x) / total_width for x in self.colwidths]
+        relative_widths = [self.width * float(x) / total_width
+                           for x in self.colwidths]
         rows = TableBuilder._gen_table(self.rows)
         return Table(caption, column_align, relative_widths, header, rows)
 
@@ -963,7 +965,8 @@ class PandocTranslator(nodes.NodeVisitor):
         self.body.append(_admonition_contents(name, title, contents))
 
     def visit_table(self, node):
-        self.table = TableBuilder(node)
+        width = self.builder.config.pandoc_options.get('max_tab_width', 1.0)
+        self.table = TableBuilder(node, width)
 
     def depart_table(self, node):
         self.body.append(self.table.as_pandoc_ast())
