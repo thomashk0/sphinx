@@ -35,8 +35,12 @@ jobs:
 
 install:
   - "sudo apt-get install graphviz"
+  - ( cd /opt && curl -sL https://github.com/jgm/pandoc/releases/download/2.1.2/pandoc-2.1.2-linux.tar.gz | tar -xzv --strip-components=1 pandoc-2.1.2/bin )
   - if [ $IS_PYTHON = true ]; then pip install -U tox codecov; fi
   - if [ $IS_PYTHON = false ]; then npm install; fi
+
+before_script:
+  - export PATH="/opt/bin:$PATH"
 
 script:
   - if [ $IS_PYTHON = true ]; then tox -- -vv; fi
