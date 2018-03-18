@@ -409,7 +409,7 @@ class PandocTranslator(nodes.NodeVisitor):
     def dispatch_visit(self, node):
         if isinstance(node.parent, nodes.sidebar):
             raise nodes.SkipNode
-        return super(PandocTranslator, self).dispatch_visit(node)
+        return nodes.NodeVisitor.dispatch_visit(self, node)
 
     def unknown_visit(self, node):
         logger.warning("not implemented: '%s'", node.tagname)
