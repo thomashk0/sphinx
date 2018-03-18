@@ -111,7 +111,6 @@ class PandocBuilder(Builder):
         """
         new_fignumbers = {
         }  # type: Dict[unicode, Dict[unicode, Tuple[int, ...]]]
-        # {u'foo': {'figure': {'id2': (2,), 'id1': (1,)}}, u'bar': {'figure': {'id1': (3,)}}}
         for docname, fignumlist in self.env.toc_fignumbers.items():
             for figtype, fignums in fignumlist.items():
                 alias = "%s/%s" % (docname, figtype)
@@ -183,6 +182,7 @@ def setup(app):
     app.add_config_value(
         'pandoc_documents',
         lambda self: [(self.master_doc, self.project, 'AUTHOR')], None)
+    app.add_config_value('pandoc_use_short_refs', False, 'pandoc')
     app.add_config_value('pandoc_force_absolute_size', False, 'pandoc')
     app.add_config_value('pandoc_convert_svg_to_png', True, 'pandoc')
     app.add_config_value('pandoc_options', {}, 'pandoc')

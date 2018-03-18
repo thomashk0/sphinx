@@ -1,5 +1,7 @@
 from __future__ import print_function
 
+import collections
+
 import pytest
 import subprocess
 import json
@@ -55,6 +57,11 @@ def find_pandoc_node(tree, node_type):
                 yield el
 
 
+def duplicates(iter):
+    return ((item, count) for item, count in collections.Counter(iter).items()
+            if count > 1)
+
+
 def check_internal_refs(json_ast, ignore=set(), ignore_cat=set()):
     """Checks internal references consistency in a pandoc document
     """
@@ -65,12 +72,23 @@ def check_internal_refs(json_ast, ignore=set(), ignore_cat=set()):
         cat = x[1:].split(':')[0]
         return cat not in ignore_cat
 
+    def _extract_ids(block, attr_idx):
+        return (node[attr_idx][0] for node in find_pandoc_node(json_ast, block)
+                if node[attr_idx][0])
+
     refs = set(node[2][0] for node in find_pandoc_node(json_ast, 'Link')
                if _keep_node(node[2][0]))
 
-    ids = set(node[0][0] for node in find_pandoc_node(json_ast, 'Span'))
-    ids.update(set(node[0][0] for node in find_pandoc_node(json_ast, 'Div')))
-    ids.update(set(node[1][0] for node in find_pandoc_node(json_ast, 'Header')))
+    ids = []
+    ids.extend(_extract_ids('Span', 0))
+    ids.extend(_extract_ids('Div', 0))
+    ids.extend(_extract_ids('Header', 1))
+
+    assert [] == list(duplicates(ids)), \
+        "no id (div, span, header) should be duplicated accross the pandoc " \
+        "document"
+
+    ids = set(ids)
 
     for r in refs:
         if r.startswith('#'):
@@ -131,6 +149,19 @@ def test_numfig(app, status, warning):
     check_internal_refs(json_ast)
 
 
+@pytest.mark.sphinx(
+    'pandoc', testroot='numfig',
+    confoverrides={'numfig': True,
+                   'pandoc_use_short_refs': True})
+def test_ref_renaming(app, status, warning):
+    app.builder.build_all()
+    warnings = warning.getvalue()
+    check_pandoc_parsing(app)
+    ast = app.outdir / (app.config.master_doc + '.json')
+    json_ast = json.loads(ast.text(encoding='utf-8'))
+    check_internal_refs(json_ast)
+
+
 @pytest.mark.sphinx('pandoc', testroot='pandoc')
 def test_substitution(app, status, warning):
     app.builder.build_all()
@@ -144,7 +175,7 @@ def test_substitution(app, status, warning):
 
 @pytest.mark.sphinx('pandoc', testroot='pandoc',
                     confoverrides={'pandoc_force_absolute_size': True})
-def test_pandoc_resize_warn(app, status, warning):
+def test_image_resize_warning(app, status, warning):
     app.builder.build_all()
     warnings = warning.getvalue()
     assert "requires textwidth" in warnings, \
@@ -155,8 +186,9 @@ def test_pandoc_resize_warn(app, status, warning):
 
 @pytest.mark.sphinx('pandoc', testroot='pandoc',
                     confoverrides={'pandoc_force_absolute_size': True,
-                                   'pandoc_options': {'textwidth': (40, 'cm')}})
-def test_pandoc_resize_ok(app, status, warning):
+                                   'pandoc_options': {'textwidth': (40, 'cm')}
+                                   })
+def test_image_resize(app, status, warning):
     app.builder.build_all()
     warnings = warning.getvalue()
     assert "requires textwidth" not in warnings, \

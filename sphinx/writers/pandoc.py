@@ -255,9 +255,11 @@ def _pop_with(el):
     return func
 
 
-def _div(div_classes, contents, style=None):
+def _simple_div(div_classes, contents, style=None):
     """Create a div with an optional 'custom-style' attribute
     """
+    # NOTE: If you need id for such Divs, you should consider using
+    # PandocTranslator._div instead
     attrs = [["custom-style", style]] if style else []
     return Div(["", div_classes, attrs], contents)
 
@@ -265,8 +267,8 @@ def _div(div_classes, contents, style=None):
 def _admonition_contents(name, title, contents, style=None):
     title_style = style + "Title" if style else None
     return Div(["", [name], []], [
-        _div(["admonition-title"], [Para([Str(title)])], style=title_style),
-        _div(["adminition-title"], contents, style=style)
+        _simple_div(["admonition-title"], [Para([Str(title)])], style=title_style),
+        _simple_div(["adminition-title"], contents, style=style)
     ])
 
 
@@ -283,9 +285,20 @@ def _div_wrap(*classes):
     def func(self, node):
         contents = self.pop()
         # TODO: id
-        self.body.append(Div(["", classes, []], contents))
+        self.body.append(self._div(["", classes, []], contents))
 
     return func
+
+
+class IdAllocator:
+    def __init__(self):
+        self.count = 0  # type: int
+
+    def next(self, ref):
+        # type: (unicode) -> unicode
+        tmp = self.count
+        self.count += 1
+        return str(tmp)
 
 
 class PandocTranslator(nodes.NodeVisitor):
@@ -315,11 +328,15 @@ class PandocTranslator(nodes.NodeVisitor):
         self.table = None
         self.def_list = None
 
+        self._ref_id_alloc = IdAllocator()
+        self._ref_rename = {}  # type: Dict[unicode, unicode]
+
         self.curfilestack = []  # type: List[unicode]
         self.footnotestack = [
         ]  # type: List[Dict[unicode, Tuple[collected_footnote, bool]]]
         self.hlsettingstack = \
             2 * [[builder.config.highlight_language, sys.maxsize]]
+
         self.next_section_ids = set()  # type: Set[unicode]
         self.next_figure_ids = set()  # type: Set[unicode]
         self.next_table_ids = set()  # type: Set[unicode]
@@ -338,6 +355,39 @@ class PandocTranslator(nodes.NodeVisitor):
     def _pop_flat(self, node):
         contents = self.pop()
         self.body.append(contents)
+
+    def _div(self, attrs, contents):
+        """A thin wrapper around Div, perform id renaming if needed """
+        attrs[0] = self._rename_id(attrs[0])
+        return Div(attrs, contents)
+
+    def _span(self, attrs, contents):
+        """A thin wrapper around Div, perform id renaming if needed """
+        attrs[0] = self._rename_id(attrs[0])
+        return Span(attrs, contents)
+
+    def _header(self, level, attrs, contents):
+        """A thin wrapper around Div, perform id renaming if needed """
+        attrs[0] = self._rename_id(attrs[0])
+        return Header(level, attrs, contents)
+
+    def _rename_id(self, id):
+        # type: (unicode) -> unicode
+        """Given an id, returns the id in the target document
+
+        Allocates if needed a new id in the target document
+        """
+        if not self.builder.config.pandoc_use_short_refs:
+            return id
+
+        if not id:
+            return ''
+
+        target_id = self._ref_rename.get(id)
+        if not target_id:
+            target_id = self._ref_id_alloc.next(id)
+            self._ref_rename[id] = target_id
+        return target_id
 
     @staticmethod
     def _gen_convert_size(builder):
@@ -438,8 +488,10 @@ class PandocTranslator(nodes.NodeVisitor):
         RE_TOKENS.sub(matcher, text)
         return tokens
 
-    @staticmethod
-    def hyperlink(id, contents):
+    def hyperlink(self, id, contents):
+        if id.startswith('#'):
+            # Rename internal references
+            id = '#' + self._rename_id(id[1:])
         return Link(["", [], []], contents, [id, ""])
 
     @staticmethod
@@ -521,23 +573,25 @@ class PandocTranslator(nodes.NodeVisitor):
         if isinstance(node.parent, nodes.table):
             id = self._pop_ids(self.next_table_ids)
             prefix = self._get_numref_prefix(node.parent)
-            self.table.caption = [Span([id, [], []], prefix + contents)]
+            self.table.caption = [self._span([id, [], []], prefix + contents)]
             return
 
         if isinstance(node.parent, nodes.topic):
-            self.body.append(Para([Span(["", ["topic-title"], []], contents)]))
+            self.body.append(Para(
+                [self._span(["", ["topic-title"], []], contents)]))
             return
 
         if isinstance(node.parent, nodes.section):
             id = self._pop_ids(self.next_section_ids)
             if self.title is None:
                 if id:
-                    contents = [Span([id, [], []], contents)]
+                    contents = [self._span([id, [], []], contents)]
                 self.title = MetaInlines(contents)
                 self.in_section = 0
                 return
             assert self.in_section > 0
-            self.body.append(Header(self.in_section, [id, [], []], contents))
+            self.body.append(
+                self._header(self.in_section, [id, [], []], contents))
         else:
             # TODO
             pass
@@ -554,7 +608,7 @@ class PandocTranslator(nodes.NodeVisitor):
             # NOTE: A citation entry (generated by sphinxcontrib-bibtex) is a
             # paragraph (with a special id). So, we need to catch this special
             # case there.
-            self.body.append(Div(["citations", [], []], contents))
+            self.body.append(self._div(["citations", [], []], contents))
             return
 
         cls = Para
@@ -639,7 +693,7 @@ class PandocTranslator(nodes.NodeVisitor):
         if node.get('ids'):
             # glossary term, wrap with a Span with the right id
             id = self.hypertarget(node['ids'][0])
-        contents = Span([id, [], []], contents)
+        contents = self._span([id, [], []], contents)
         self.def_list.terms.append(contents)
 
     visit_definition = _push
@@ -664,16 +718,19 @@ class PandocTranslator(nodes.NodeVisitor):
             id = self._pop_ids(self.next_listing_ids)
             opts.append(["custom-style", "Table Caption"])
         if self.caption:
-            caption = Span([id, ["caption"], []], self.caption)
-            self.body.append(Div(["", ["caption"], opts], [Plain([caption])]))
-        self.body.append(Div(["", ["container"], []], contents))
+            caption = self._span([id, ["caption"], []], self.caption)
+            self.body.append(
+                self._div(["", ["caption"], opts], [Plain([caption])]))
+        self.body.append(
+            self._div(["", ["container"], []], contents))
         self.caption = None
 
     visit_inline = _push
 
     def depart_inline(self, node):
         contents = self.pop()
-        self.body.append(Span(["", node.get('classes', []), []], contents))
+        self.body.append(
+            self._span(["", node.get('classes', []), []], contents))
 
     visit_strong = _push
 
@@ -704,6 +761,7 @@ class PandocTranslator(nodes.NodeVisitor):
         if not uri and node.get('refid'):
             uri = '%' + self.curfilestack[-1] + '#' + node['refid']
 
+        id = None
         if uri.startswith('#'):
             # references to labels in the same document
             id = '#' + self.hypertarget(uri[1:])
@@ -888,10 +946,10 @@ class PandocTranslator(nodes.NodeVisitor):
         #   contents[0] -> Str (label)
         #   contents[1] -> Para (label description)
         cite_para = [
-            Span([anchor, ["citation-label"], []], [contents[0]]),
+            self._span([anchor, ["citation-label"], []], [contents[0]]),
             Space()
         ] + contents[1]['c']
-        self.body.append(Div(["citation", [], []], [Para(cite_para)]))
+        self.body.append(self._div(["citation", [], []], [Para(cite_para)]))
 
     def visit_literal(self, node):
         self.body.append(Code(["", [], []], node.astext()))
@@ -1060,7 +1118,8 @@ class PandocTranslator(nodes.NodeVisitor):
         image["c"][2][1] = "fig:"
         id = self._pop_ids(self.next_figure_ids)
         self.body.append(
-            Div([id, ["figure"], []], [Para([image])] + (self.legend or [])))
+            self._div([id, ["figure"], []],
+                      [Para([image])] + (self.legend or [])))
         self.caption = None
         self.legend = None
 
@@ -1089,17 +1148,22 @@ class PandocTranslator(nodes.NodeVisitor):
 
     def depart_centered(self, node):
         contents = self.pop()
-        self.body.append(_div(["centered"], [Plain(contents)]))
+        self.body.append(self._div(["", ["centered"], []], [Plain(contents)]))
 
     visit_number_reference = _push
 
     def depart_number_reference(self, node):
         contents = self.pop()
-        # FIXME (TH): why not reusing reference handling from depart_reference ?
         if node.get('refid'):
             id = self.hypertarget(node['refid'])
+        elif node.get('refuri'):
+            id = node['refuri'][1:].replace('#', ':')
         else:
-            id = node.get('refuri', '')[1:].replace('#', ':')
+            logger.warning("found a numref to an unknown destination, the "
+                           "reference will not be present in the output",
+                           location=node)
+            return
+
         self.body.append(self.hyperlink("#" + id, contents))
 
     visit_download_reference = _push
@@ -1121,4 +1185,4 @@ class PandocTranslator(nodes.NodeVisitor):
             self.handled_abbrs.add(abbr)
             # append explanation
             contents.extend(self.get_text(' ({})'.format(node['explanation'])))
-        self.body.append(Span(["", ["abbr"], []], contents))
+        self.body.append(self._span(["", ["abbr"], []], contents))
