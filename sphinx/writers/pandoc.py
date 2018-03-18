@@ -832,7 +832,7 @@ class PandocTranslator(nodes.NodeVisitor):
             def unfold(data, depth):
                 if isinstance(data, LineBlockLine):
                     if depth:
-                        yield [Str('\xa0' * depth)] + data.contents
+                        yield [Str('\u00a0' * depth)] + data.contents
                     else:
                         yield data.contents
                     return
