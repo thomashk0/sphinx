@@ -24,7 +24,7 @@ from sphinx import addnodes
 from sphinx.util import logging
 
 if TYPE_CHECKING:
-    from typing import Any, Dict, List, Tuple, Set  # NOQA
+    from typing import Any, Dict, List, Tuple, Set, Union  # NOQA
 
 logger = logging.getLogger(__name__)
 RE_TOKENS = re.compile(r'(?P<white>\s+)|(?P<nonwhite>\S+)')
@@ -145,7 +145,7 @@ class TableBuilder:
     """
 
     def __init__(self, node, width):
-        # type: (nodes.table) -> None
+        # type: (nodes.table, Union[int, float]) -> None
         self.headers = []  # type: List[unicode]
         self.rows = []  # type: List[List[Any]]
         self.node = node
