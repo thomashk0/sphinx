@@ -291,14 +291,15 @@ def _div_wrap(*classes):
 
 
 class IdAllocator:
-    def __init__(self):
+    def __init__(self, prefix=''):
         self.count = 0  # type: int
+        self.prefix = prefix  # type: unicode
 
     def next(self, ref):
         # type: (unicode) -> unicode
         tmp = self.count
         self.count += 1
-        return str(tmp)
+        return self.prefix + str(tmp)
 
 
 class PandocTranslator(nodes.NodeVisitor):
@@ -328,7 +329,9 @@ class PandocTranslator(nodes.NodeVisitor):
         self.table = None
         self.def_list = None
 
-        self._ref_id_alloc = IdAllocator()
+        self._ref_id_alloc = IdAllocator(
+            self.builder.config.pandoc_options.get('ref_rename_prefix',
+                                                   'ref-'))
         self._ref_rename = {}  # type: Dict[unicode, unicode]
 
         self.curfilestack = []  # type: List[unicode]
@@ -362,12 +365,12 @@ class PandocTranslator(nodes.NodeVisitor):
         return Div(attrs, contents)
 
     def _span(self, attrs, contents):
-        """A thin wrapper around Div, perform id renaming if needed """
+        """A thin wrapper around Span, perform id renaming if needed """
         attrs[0] = self._rename_id(attrs[0])
         return Span(attrs, contents)
 
     def _header(self, level, attrs, contents):
-        """A thin wrapper around Div, perform id renaming if needed """
+        """A thin wrapper around Header, perform id renaming if needed """
         attrs[0] = self._rename_id(attrs[0])
         return Header(level, attrs, contents)
 
@@ -378,6 +381,12 @@ class PandocTranslator(nodes.NodeVisitor):
         Allocates if needed a new id in the target document
         """
         if not self.builder.config.pandoc_use_short_refs:
+            if len(id) > 40:
+                logger.warning(
+                    "A reference id longer than 40 character was found."
+                    " Consider using the option `pandoc_use_short_refs = True`"
+                    " in your conf.py to avoid any broken reference when"
+                    " converting to .docx")
             return id
 
         if not id:

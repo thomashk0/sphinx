@@ -180,6 +180,8 @@ def test_image_resize_warning(app, status, warning):
     warnings = warning.getvalue()
     assert "requires textwidth" in warnings, \
         "warns about missing configuration"
+    assert "reference id longer than 40 character" in warnings, \
+        "warns about too long reference"
     json_ast = json_content(app)
     assert "42%" in json_ast, "no size conversion was done"
 

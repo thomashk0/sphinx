@@ -24,3 +24,10 @@ Definitions
              :alt: Warning!
              :height: 3cm
              :width: 3cm
+
+.. _sec_this_is_a_reference_that_is_too_long_to_be_handled_by_word:
+
+Long Reference
+--------------
+
+Empty section, see :ref:`sec_this_is_a_reference_that_is_too_long_to_be_handled_by_word`.
