@@ -116,6 +116,13 @@ def intercalate(glue, l):
     return l[:1] + [part for el in l[1:] for part in glue + [el]]
 
 
+def single_para_to_plain(contents):
+    """ transform single paragraph to plain text node """
+    if len(contents) == 1 and contents[0].get('t') == 'Para':
+        return [Plain(contents[0]['c'])]
+    return contents
+
+
 class DefListItemBuilder:
     def __init__(self):
         self.terms = []  # type: List[Any]
@@ -210,7 +217,8 @@ class TableBuilder:
                 "pandoc doesn't support rowspan > 1, filling with empty cells "
                 "instead.",
                 location=self.node)
-        self.currow.append(TableCell(content, morecols, morerows))
+        cell_content = single_para_to_plain(content)
+        self.currow.append(TableCell(cell_content, morecols, morerows))
 
     def as_pandoc_ast(self):
         if len(self.headers) > 1:

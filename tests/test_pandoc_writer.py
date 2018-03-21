@@ -96,6 +96,18 @@ def check_internal_refs(json_ast, ignore=set(), ignore_cat=set()):
                 "every reference must have an associated span id"
 
 
+def is_single_para(contents):
+    return len(contents) == 1 and contents[0].get('t') == 'Para'
+
+
+def check_table(t):
+    rows = t[4]
+    assert [len(rows[0])] * len(rows) == list(map(len, rows)), \
+        "all rows must have the same length"
+    assert not any(is_single_para(cell) for row in rows for cell in row), \
+        "table must not contain single paragraphs"
+
+
 @pytest.mark.sphinx('pandoc')
 def test_all(app, status, warning):
     app.builder.build_all()
@@ -114,17 +126,15 @@ def test_table(app, status, warning):
     json_ast = parse_json_ast(app)
     tables = list(find_pandoc_node(json_ast, 'Table'))
     for t in tables:
-        rows = t[4]
-        assert [len(rows[0])] * len(rows) == list(map(len, rows)), \
-            "all rows must have the same length"
+        check_table(t)
 
-    # quickcheck of complex.rst : grid table
+    # handwritten test on complex.rst : grid table
     rows = tables[-2][4]
     assert rows[1][1] == [], "colspan empty cell filling failed"
     assert rows[2][0] == [], "rowspan empty filling failed"
     assert rows[2][1] != []
     assert rows[2][2] == []
-
+    
 
 @pytest.mark.sphinx('pandoc')
 def test_rubric(app, status, warning):
