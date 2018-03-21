@@ -1113,7 +1113,10 @@ class PandocTranslator(nodes.NodeVisitor):
             In case of success, returns a list of pandoc Inline for the numref.
         """
         numref = self._get_numref(node)
-        return [Str(numref)] if numref else []
+        sep = self.get_text(
+            self.builder.config.pandoc_options.get('numref_caption_separator',
+                                                   ' – '))
+        return [Str(numref.strip())] + sep if numref else []
 
     def depart_figure(self, node):
         image = self.pop()[0]["c"][0]
