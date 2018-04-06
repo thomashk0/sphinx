@@ -976,6 +976,13 @@ class PandocTranslator(nodes.NodeVisitor):
 
     depart_block_quote = _pop_with(BlockQuote)
 
+    visit_attribution = _push
+
+    def depart_attribution(self, node):
+        contents = [Para([Str('—'), Space()] + self.pop())]
+        self.body.append(
+            _simple_div(['attribution'], contents, style='Attribution'))
+
     def visit_image(self, node):
         if node['uri'] in self.builder.images:
             uri = self.builder.images[node['uri']]
