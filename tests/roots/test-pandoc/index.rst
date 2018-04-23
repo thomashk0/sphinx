@@ -8,7 +8,7 @@ Paragraph 1
 Paragraph 2
 
 Inline Image
-------------
+============
 
 Paragraph 3
 
@@ -18,7 +18,7 @@ Paragraph 3
 Paragraph 4
 
 Definitions
------------
+===========
 
 .. |caution| image:: warning.png
              :alt: Warning!
@@ -28,6 +28,18 @@ Definitions
 .. _sec_this_is_a_reference_that_is_too_long_to_be_handled_by_word:
 
 Long Reference
---------------
+==============
 
 Empty section, see :ref:`sec_this_is_a_reference_that_is_too_long_to_be_handled_by_word`.
+
+Definitions
+===========
+
+- Foo
+    definition for foo
+
+  Bar
+    definition for bar
+
+- Baz
+    definition for baz

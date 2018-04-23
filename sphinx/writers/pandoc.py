@@ -123,12 +123,6 @@ def single_para_to_plain(contents):
     return contents
 
 
-class DefListItemBuilder:
-    def __init__(self):
-        self.terms = []  # type: List[Any]
-        self.defs = []  # type: List[Any]
-
-
 class TableCell:
     def __init__(self, content, colspan, rowspan):
         self.content = content
@@ -335,7 +329,6 @@ class PandocTranslator(nodes.NodeVisitor):
         self.caption = None
         self.legend = None
         self.table = None
-        self.def_list = None
 
         self._ref_id_alloc = IdAllocator(
             self.builder.config.pandoc_options.get('ref_rename_prefix',
@@ -687,15 +680,15 @@ class PandocTranslator(nodes.NodeVisitor):
     visit_list_item = _push
     depart_list_item = _pop_flat
 
-    def visit_definition_list_item(self, node):
-        self.def_list = DefListItemBuilder()
+    visit_definition_list_item = _push
 
     def depart_definition_list_item(self, node):
+        contents = self.pop()
+        terms, desc = contents[:-1], contents[-1]
         # Pandoc supports multiple definitions, but not multiple terms.
         # So, we separate them by comma + space.
-        terms = intercalate([Str(","), Space()], self.def_list.terms)
-        self.body.append([terms, self.def_list.defs])
-        self.def_list = None
+        terms = intercalate([Str(","), Space()], terms)
+        self.body.append([terms, [desc]])
 
     def visit_term(self, node):
         for n in node[:]:
@@ -710,14 +703,10 @@ class PandocTranslator(nodes.NodeVisitor):
         if node.get('ids'):
             # glossary term, wrap with a Span with the right id
             id = self.hypertarget(node['ids'][0])
-        contents = self._span([id, [], []], contents)
-        self.def_list.terms.append(contents)
+        self.body.append(self._span([id, [], []], contents))
 
     visit_definition = _push
-
-    def depart_definition(self, node):
-        contents = self.pop()
-        self.def_list.defs.append(contents)
+    depart_definition = _pop_flat
 
     # TODO?
     visit_index = _skip
