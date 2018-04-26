@@ -43,3 +43,8 @@ Definitions
 
 - Baz
     definition for baz
+
+1. Hello
+    definition for hello
+#. World
+    definition for world
