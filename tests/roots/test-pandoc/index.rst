@@ -48,3 +48,16 @@ Definitions
     definition for hello
 #. World
     definition for world
+
+List in Definitions
+===================
+
+Sample Term
+    * item 1
+    * item 2
+    * item 3
+
+Sample Term2
+    1. item 1
+    #. item 2
+    #. item 3
