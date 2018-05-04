@@ -924,6 +924,15 @@ class PandocTranslator(nodes.NodeVisitor):
 
     depart_subscript = _pop_with(Subscript)
 
+    def push_raw_tex_math_block(self, text):
+        """ Push a raw inline latex """
+        math = Math(DisplayMath(), text)
+        self.body.append(Para([math]))
+
+    def push_raw_tex_math(self, text):
+        """ Push a raw inline latex math block """
+        self.body.append(Math(InlineMath(), text))
+
     def visit_math_block(self, node):
         math = Math(DisplayMath(), node.astext())
         self.body.append(Para([math]))  # go figure
@@ -1016,8 +1025,6 @@ class PandocTranslator(nodes.NodeVisitor):
     visit_warning = _push
     visit_tip = _push
     visit_seealso = _push
-    # NOTE: for some reasons, one style is created for each todo...
-    # support is left as an improvement
     visit_todo_node = _push
 
     depart_note = _admonition("note", "Note", style="Note")
