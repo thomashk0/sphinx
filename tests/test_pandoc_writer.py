@@ -29,12 +29,12 @@ def parse_with_pandoc(file, to='native'):
 
 def parse_json_ast(app):
     ast = app.outdir / (app.config.master_doc + '.json')
-    return json.loads(ast.text(encoding='utf-8'))
+    return json.loads(ast.read_text(encoding='utf-8'))
 
 
 def json_content(app):
     ast = app.outdir / (app.config.master_doc + '.json')
-    return ast.text(encoding='utf-8')
+    return ast.read_text(encoding='utf-8')
 
 
 def check_pandoc_parsing(app):
@@ -141,7 +141,7 @@ def test_rubric(app, status, warning):
     app.builder.build_all()
     warnings = warning.getvalue()
     ast = app.outdir / (app.config.master_doc + '.json')
-    ast_json = json.loads(ast.text(encoding='utf-8'))
+    ast_json = json.loads(ast.read_text(encoding='utf-8'))
     strong = list(find_pandoc_node(ast_json, 'Strong'))
     assert [Str("Footnotes")] not in strong, \
         "rubric 'Footnotes' must have been removed"
@@ -155,7 +155,7 @@ def test_numfig(app, status, warning):
     warnings = warning.getvalue()
     check_pandoc_parsing(app)
     ast = app.outdir / (app.config.master_doc + '.json')
-    json_ast = json.loads(ast.text(encoding='utf-8'))
+    json_ast = json.loads(ast.read_text(encoding='utf-8'))
     check_internal_refs(json_ast)
 
 
@@ -168,7 +168,7 @@ def test_ref_renaming(app, status, warning):
     warnings = warning.getvalue()
     check_pandoc_parsing(app)
     ast = app.outdir / (app.config.master_doc + '.json')
-    json_ast = json.loads(ast.text(encoding='utf-8'))
+    json_ast = json.loads(ast.read_text(encoding='utf-8'))
     check_internal_refs(json_ast)
 
 

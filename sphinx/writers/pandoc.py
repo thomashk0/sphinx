@@ -1088,7 +1088,7 @@ class PandocTranslator(nodes.NodeVisitor):
             reports a warning.
             In case of success, returns the string prefix (e.g., "Fig 42. ")
         """
-        fig_type = self.builder.env.domains['std'].get_figtype(node)
+        fig_type = self.builder.env.domains['std'].get_enumerable_node_type(node)
         if not fig_type:
             logger.warning(
                 "figure type {} is unknown".format(fig_type), location=node)

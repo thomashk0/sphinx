@@ -18,9 +18,10 @@ from docutils.io import FileOutput
 
 from sphinx import addnodes
 from sphinx.builders import Builder
-from sphinx.environment import NoUri
+from sphinx.errors import NoUri
 from sphinx.environment.adapters.asset import ImageAdapter
-from sphinx.util import logging, ensuredir, status_iterator, copy_asset_file
+from sphinx.util.fileutil import copy_asset_file
+from sphinx.util import logging, ensuredir, status_iterator
 from sphinx.util.console import darkgreen  # type: ignore
 from sphinx.util.nodes import inline_all_toctrees
 from sphinx.util.osutil import SEP
